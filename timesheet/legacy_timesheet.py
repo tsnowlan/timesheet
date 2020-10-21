@@ -6,11 +6,12 @@ from datetime import timedelta
 from operator import and_
 from pathlib import Path
 import re
-from sqlite3.dbapi2 import Time
 from sqlalchemy import create_engine, Column, Date, DateTime, Text
+import sqlalchemy.exc
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import scoped_session, sessionmaker, relationship, backref
+from sqlalchemy.orm import sessionmaker
 import sqlite3
+import sys
 
 # sqlalchemy shit
 Base = declarative_base()
@@ -37,6 +38,7 @@ UNLOCK_STR = "unlocked login keyring"
 LOGIN_STR = "gnome-keyring-daemon started properly and unlocked keyring"
 LIDCLOSE_STR = "Lid closed"
 SHUTDOWN_STR = "System is powering down"
+VALID_TARGETS = ["today", "yesterday", "month", "all"] + list(MONTHS.keys())
 
 
 def main():
@@ -106,76 +108,69 @@ def main():
     if args.debug:
         setattr(args, "verbose", True)
 
-    engine = create_engine(f"sqlite:///{args.dbfile}", echo=True)
+    engine = create_engine(f"sqlite:///{args.dbfile}", echo=args.debug)
     Session.configure(bind=engine)
     session = Session()
     default_sort = (Timesheet.clock,)
 
     if args.show or args.print:
         target = args.show if args.show else args.print
-        if target == "today":
-            res = (
-                session.query(Timesheet)
-                .filter(Timesheet.date == TODAY)
-                .order_by(*default_sort)
-            )
-        elif target == "month":
-            res = get_month().order_by(*default_sort)
-        elif target == "all":
-            res = session.query(Timesheet).order_by(*default_sort)
-        elif target in MONTHS:
-            res = get_month(MONTHS[target.lower()]).order_by(*default_sort)
-        else:
-            raise ValueError(f"Unrecognized target: {target}")
+        if target not in VALID_TARGETS:
+            raise ValueError(f"Invalid target: {target}")
 
-        entries = res.all()
+        log_from = TODAY
+        log_to = None
+        if target == "yesterday":
+            log_from = TODAY - timedelta(days=1)
+        elif target == "month":
+            log_from = TODAY.replace(day=1)
+            log_to = next_month(log_from)
+        elif target in MONTHS:
+            log_from = datetime.date(TODAY.year, MONTHS[target], 1)
+            log_to = next_month(log_from)
+        elif target == "all":
+            log_from = None
+
+        if log_from and not log_to:
+            res = get_day(session, log_from)
+        elif log_from and log_to:
+            res = get_range(session, log_from, log_to)
+        else:
+            res = session.query(Timesheet)
+
+        entries = res.order_by(*default_sort).all()
         if entries:
             output = {}
             for e in entries:
-                if e[0] not in output:
-                    output[e[0]] = {"IN": None, "OUT": None}
-                output[e[0]][e[1]] = datetime.datetime.strptime(
-                    e[2], "%Y-%m-%d %H:%M:%S"
-                )
+                if e.date not in output:
+                    output[e.date] = {"IN": None, "OUT": None}
+                output[e.date][e.log_type] = e.clock
             if args.show:
                 for dt in output:
-                    print("{}\t{}\t{}".format(dt, output[dt]["IN"], output[dt]["OUT"]))
+                    print(f"{dt}\t{output[dt]['IN']}\t{output[dt]['OUT']}")
             else:
                 out_str = ""
                 for action in ("IN", "OUT"):
                     out_str += "Print {}:\n---\n".format(action)
-                    for day in range(1, 32):
-                        try:
-                            d = min_date.replace(day=day).strftime("%Y-%m-%d")
-                        except ValueError as e:
-                            if "is out of range for month" in str(e):
-                                break
-                            else:
-                                raise (e)
-                        if d in output and output[d][action]:
-                            rounded = round_min(output[d])
+                    curr_day = log_from
+                    while curr_day < log_to:
+                        if curr_day in output and output[curr_day][action]:
+                            rounded = round_min(output[curr_day])
                             out_str += "{}\t{}\n".format(
                                 rounded[action].hour, rounded[action].minute
                             )
                         else:
                             out_str += "\n"
+                        curr_day += timedelta(days=1)
                     if action == "IN":
                         out_str = out_str.strip() + "\n\n---\n"
                 print(out_str.strip())
 
         else:
-            print("No entries found for query: {}, {}".format(query, qargs))
+            print(f"No entries found for {target}")
     elif args.balance:
-        conn.row_factory = dict_factory
-        qry = """
-            SELECT ds, type, clock
-            FROM timesheet
-            ORDER BY 1, 3
-        """.strip()
-        c = conn.cursor()
-        c.execute(qry)
-
-        entries = c.fetchall()
+        res = session.query(Timesheet).order_by(*default_sort)
+        entries = res.all()
         dates = {}
         for e in entries:
             ds_str = str(e["ds"])
@@ -208,66 +203,63 @@ def main():
             raise ValueError(
                 "You must specify -s or --from-string with the value to insert"
             )
-        c = conn.cursor()
-        old_entry = c.execute(
-            "SELECT ds, type, clock FROM timesheet ORDER BY 3 DESC LIMIT 1"
-        ).fetchone()
-        qargs = (args.from_string,) + old_entry
-        c.execute(
-            "UPDATE timesheet SET clock = ? WHERE ds = ? AND type = ? AND clock = ?",
-            qargs,
+
+        log_entry = (
+            session.query(Timesheet).order_by(Timesheet.clock.desc()).limit(1).scalar()
         )
-        conn.commit()
-        print("Updated {} to {}".format(old_entry, args.from_string))
-    else:
+        old_time = log_entry.clock
+        log_entry.clock = args.from_string
         try:
-            initdb(conn)
-            ts = datetime.datetime.now().replace(second=0, microsecond=0)
-            if args.from_log:
-                log_ts = ts_from_log()
-                if log_ts is None:
-                    raise ValueError("No unlock found today: {}".format(TODAY))
-                ts = log_ts
-            elif args.from_string:
-                ts = args.from_string
-
-            if args.clock_in:
-                action = "IN"
-            else:
-                action = "OUT"
-
-            c = conn.cursor()
-            c.execute(
-                "INSERT INTO timesheet (ds, type, clock) VALUES (?, ?, ?)",
-                [ts.date(), action, ts],
-            )
-            conn.commit()
-
-            print("Clocked {} at {}".format(action, ts.strftime("%Y-%m-%d %H:%M")))
-        except sqlite3.IntegrityError as e:
-            old_entry = c.execute(
-                "SELECT clock FROM timesheet WHERE ds = ? AND type = ?",
-                [ts.date(), action],
-            ).fetchone()
-            print(
-                "You have already clocked {} for {} at {}".format(
-                    action, ts.date(), old_entry[0].split(" ")[1]
-                )
-            )
-
-
-def get_month(
-    session: scoped_session, month: int = TODAY.month, year: int = TODAY.year
-):
-    min_date = datetime.datetime(year=year, month=month, day=1)
-    if min_date.month < 12:
-        max_date = min_date.replace(month=min_date.month + 1)
+            session.add(log_entry)
+            session.commit()
+        except Exception as e:
+            breakpoint()
+            session.rollback()
+            raise e
+        print(
+            f"Updated {log_entry.date}/{log_entry.log_type} from {old_time} to {log_entry.clock}"
+        )
     else:
-        max_date = min_date.replace(year=min_date.year + 1, month=1)
+        ts = datetime.datetime.now().replace(second=0, microsecond=0)
+        if args.from_log:
+            log_ts = ts_from_log()
+            if log_ts is None:
+                raise ValueError("No unlock found today: {}".format(TODAY))
+            ts = log_ts
+        elif args.from_string:
+            ts = args.from_string
 
+        if args.clock_in:
+            action = "IN"
+        else:
+            action = "OUT"
+
+        try:
+            new_log = Timesheet(date=ts.date(), log_type=action, clock=ts)
+            session.add(new_log)
+            session.commit()
+        except sqlalchemy.exc.IntegrityError as e:
+            session.rollback()
+            if "UNIQUE constraint failed" in str(e):
+                print(
+                    f"Clock {action.lower()} entry for {ts.date()} already exists",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            else:
+                raise (e)
+
+        print(f"Clocked {action.lower()} at {ts}")
+
+
+def get_range(session, min_date, max_date):
     return session.query(Timesheet).filter(
         and_(Timesheet.date >= min_date, Timesheet.date < max_date)
     )
+
+
+def get_day(session, day: datetime.date = TODAY):
+    return session.query(Timesheet).filter(Timesheet.date == day)
 
 
 def backfill(month: int, year: int = TODAY.year):
@@ -404,18 +396,11 @@ class Timesheet(Base):
         return f"{self.date}\t{self.log_type}\t{self.clock}"
 
 
-class Timesheet2(Base):
-    __tablename__ = "timesheet"
-
-    date = Column(Date, primary_key=True)
-    clock_in = Column(DateTime)
-    clock_out = Column(DateTime)
-
-    def __repr__(self) -> str:
-        return f"<Timesheet date={self.date} in={self.clock_in} out={self.clock_out}"
-
-    def __str__(self) -> str:
-        return f"{self.date}\t{self.clock_in}\t{self.clock_out}"
+def next_month(dt: datetime.date):
+    if dt.month == 12:
+        return dt.replace(year=dt.year + 1, month=1)
+    else:
+        return dt.replace(month=dt.month + 1)
 
 
 ###

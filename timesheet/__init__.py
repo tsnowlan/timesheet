@@ -16,7 +16,7 @@ from .app import db, get_day, get_range, add_log, edit_log, guess_day
 @click.argument(
     "log_time",
     metavar="[TIME_STRING]",
-    default=datetime.datetime.now(),
+    default=f"{datetime.datetime.now()}",
     type=click.DateTime(DATETIME_FORMATS),
     callback=validate_datetime,
 )

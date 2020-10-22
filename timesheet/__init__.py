@@ -1,7 +1,7 @@
 from timesheet.legacy_timesheet import time_delta
 import click
 import datetime
-import sys
+import string
 
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm.session import sessionmaker
@@ -36,11 +36,16 @@ def clock(log_type, log_time, guess, db_file) -> None:
     print(f"Successfully clocked {log_type} on {new_log.day} at {new_log.time}")
 
 
-@click.group(help="print out timesheet entries for the given date(s)")
-@click.argument("target", metavar="< today | month | $month_name >", default="today")
+@click.command(help="print out timesheet entries for the given date(s)")
+@click.argument(
+    "target",
+    metavar="< today | month | $month_name >",
+    default="today",
+    callback=string.lower,
+)
 @click.pass_context
-def print_logs(ctx):
-    raise NotImplemented()
+def print_logs(ctx, target):
+    print(f"target: {target}")
 
 
 @click.group(help="edit an existing log or logs")

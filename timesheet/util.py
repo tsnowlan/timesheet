@@ -1,13 +1,15 @@
+import click
 from collections import namedtuple
 import datetime
 import sys
+from typing import Any
 
 from .constants import TODAY
 
 
-def ensure_db(db):
-    def decorator(func):
-        def inner(*args, **kwargs):
+def ensure_db(db: Path) -> function:
+    def decorator(func: function) -> function:
+        def inner(*args: list[Any], **kwargs: dict[Any]) -> function:
             db.ensure_db()
             return func(*args, **kwargs)
 
@@ -16,7 +18,7 @@ def ensure_db(db):
     return decorator
 
 
-def log_date(log_line: str):
+def log_date(log_line: str) -> datetime.datetime:
     (month, day, clock, log) = log_line.split(None, 3)
     try:
         dt = datetime.datetime.strptime(
@@ -32,13 +34,19 @@ def log_date(log_line: str):
     return dt
 
 
-def validate_action(ctx, param, value):
+def lowercase_cb(some_str: str) -> str:
+    return some_str.lower()
+
+
+def validate_action(ctx: click.Context, param: click.Option, value: str) -> str:
     if value.lower() in ("in", "out"):
         return value.lower()
     raise ValueError("You can only clock in or clock out")
 
 
-def validate_datetime(ctx, param, dt: datetime.datetime):
+def validate_datetime(
+    ctx: click.Context, param: click.Option, dt: datetime.datetime
+) -> datetime.datetime:
     # replace default date on time string parse with today's date
     if dt.date() == datetime.date(1900, 1, 1):
         dt = dt.replace(year=TODAY.year, month=TODAY.month, day=TODAY.day)

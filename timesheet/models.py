@@ -18,5 +18,5 @@ class Timesheet(Base):
     def __str__(self) -> str:
         return f"{self.date}\t{self.clock_in}\t{self.clock_out}"
 
-    def log(self, log_type):
+    def log(self, log_type) -> Log:
         return Log(self.date, log_type, getattr(self, f"clock_{log_type}", None))

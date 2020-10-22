@@ -27,7 +27,7 @@ from .app import db, get_day, get_range, add_log, edit_log, guess_day
     type=click.Path(dir_okay=False, writable=True),
     default=DEF_DBFILE,
 )
-def clock(log_type, log_time, guess, db_file):
+def clock(log_type, log_time, guess, db_file) -> None:
     db.connect(db_file)
     if guess and log_type == "in":
         new_log = guess_day(log_time.date())
@@ -36,7 +36,8 @@ def clock(log_type, log_time, guess, db_file):
     print(f"Successfully clocked {log_type} on {new_log.day} at {new_log.time}")
 
 
-@click.group(help="print out timesheet entries")
+@click.group(help="print out timesheet entries for the given date(s)")
+@click.argument("target", metavar="< today | month | $month_name >", default="today")
 @click.pass_context
 def print_logs(ctx):
     raise NotImplemented()
@@ -67,14 +68,8 @@ def edit_logs(ctx):
     help="non-inclusive end date for backfill, defaults to start + 1day",
 )
 @click.pass_context
-def backfill(ctx, start, end):
+def backfill(ctx, start, end) -> None:
     raise NotImplemented()
-
-
-def foo_cb(ctx, param, val):
-    print(f"in {param} with val {val} ({type(val)})")
-    breakpoint()
-    sys.exit()
 
 
 @click.group()
@@ -86,16 +81,9 @@ def foo_cb(ctx, param, val):
 )
 @click.option("-v", "--verbose", is_flag=True)
 @click.option("--debug", is_flag=True)
-@click.option(
-    "--foo",
-    type=click.DateTime(DATETIME_FORMATS),
-    callback=validate_datetime,
-)
 @click.pass_context
-def run_cli(ctx, db_file, verbose, debug, foo):
+def run_cli(ctx, db_file, verbose, debug, foo) -> None:
     ctx.ensure_object(dict)
-    print(f"foo: {foo}")
-    sys.exit()
 
     if debug and not verbose:
         verbose = True
@@ -112,5 +100,5 @@ run_cli.add_command(edit_logs)
 run_cli.add_command(backfill)
 
 
-def main():
+def main() -> None:
     run_cli()

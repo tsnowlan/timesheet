@@ -8,14 +8,14 @@ import sys
 from .constants import UNLOCK_STR, LOGIN_STR, SHUTDOWN_STR, LIDCLOSE_STR
 from .db import DB
 from .models import Timesheet
-from .util import log_date, ensure_db
+from .util import log_date, ensure_db, Log
 
 # exported objects
 db = DB()
 
 # exported functions
 @ensure_db(db)
-def get_day(day: datetime.date):
+def get_day(day: datetime.date) -> Timesheet:
     try:
         day_log = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
     except Exception as e:
@@ -25,7 +25,7 @@ def get_day(day: datetime.date):
 
 
 @ensure_db(db)
-def get_range(from_day: datetime.date, until_day: datetime.date):
+def get_range(from_day: datetime.date, until_day: datetime.date) -> list[Timesheet]:
     try:
         logs = (
             db.session.query(Timesheet)
@@ -40,7 +40,7 @@ def get_range(from_day: datetime.date, until_day: datetime.date):
 
 
 @ensure_db(db)
-def add_log(log_type: str, log_day: datetime.date, log_time: datetime.time):
+def add_log(log_type: str, log_day: datetime.date, log_time: datetime.time) -> Log:
     log_data = {
         "day": log_day,
         "clock_in": log_time if log_type == "in" else None,
@@ -54,7 +54,7 @@ def add_log(log_type: str, log_day: datetime.date, log_time: datetime.time):
 
 
 @ensure_db(db)
-def edit_log(log_type: str, log_day: datetime.date, log_time: datetime.time):
+def edit_log(log_type: str, log_day: datetime.date, log_time: datetime.time) -> Log:
     log_data = {
         "day": log_day,
         f"clock_{log_type}": log_time,
@@ -68,7 +68,7 @@ def edit_log(log_type: str, log_day: datetime.date, log_time: datetime.time):
 
 
 @ensure_db(db)
-def guess_day(day: datetime.date):
+def guess_day(day: datetime.date) -> Log:
     entries = list()
     for logfile in get_logs():
         log_activity = get_activity(logfile, day)
@@ -82,7 +82,9 @@ def guess_day(day: datetime.date):
 ### internal stuff
 
 
-def get_activity(logfile: Path, day: datetime.date = None, log_in=True, log_out=False):
+def get_activity(
+    logfile: Path, day: datetime.date = None, log_in=True, log_out=False
+) -> list[datetime.datetime]:
     results = {"in": [], "out": []}
     open_func = open
     if logfile.name.endswith(".gz"):
@@ -105,12 +107,12 @@ def get_activity(logfile: Path, day: datetime.date = None, log_in=True, log_out=
     return results
 
 
-def get_logs():
+def get_logs() -> list[Path]:
     log_dir = Path("/var/log")
     return log_dir.glob("auth.log*")
 
 
-def row_exists(idx: datetime.date):
+def row_exists(idx: datetime.date) -> bool:
     return bool(db.session.query(Timesheet).filter(Timesheet.date == idx).count())
 
 
@@ -118,7 +120,7 @@ def add_row(
     day: datetime.date,
     clock_in: datetime.time = None,
     clock_out: datetime.time = None,
-):
+) -> Timesheet:
     if not any([clock_in, clock_out]):
         raise ValueError("You must specify at ")
     new_row = Timesheet(date=day, clock_in=clock_in, clock_out=clock_out)
@@ -143,7 +145,7 @@ def update_row(
     clock_in: datetime.time = None,
     clock_out: datetime.time = None,
     overwrite=False,
-):
+) -> Timesheet:
     row = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
 
     bail = list()

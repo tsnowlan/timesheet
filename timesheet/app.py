@@ -1,14 +1,15 @@
-from collections import namedtuple
 import datetime
 import gzip
-from pathlib import Path
-import sqlalchemy.exc
 import sys
+from pathlib import Path
+from typing import Optional
 
-from .constants import UNLOCK_STR, LOGIN_STR, SHUTDOWN_STR, LIDCLOSE_STR
+import sqlalchemy.exc
+
+from .constants import LIDCLOSE_STR, LOGIN_STR, SHUTDOWN_STR, UNLOCK_STR
 from .db import DB
 from .models import Timesheet
-from .util import log_date, ensure_db, Log
+from .util import Log, ensure_db, log_date
 
 # exported objects
 db = DB()
@@ -89,6 +90,11 @@ def guess_day(day: datetime.date) -> Log:
         print(f"Unable to find any logins on {day}", file=sys.stderr)
         sys.exit(1)
     return add_log("in", entries[0].date(), entries[0].time())
+
+
+@ensure_db(db)
+def backfill(min_day: datetime.date, max_day: Optional[datetime.date] = None):
+    pass
 
 
 ### internal stuff

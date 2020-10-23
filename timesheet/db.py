@@ -1,7 +1,8 @@
 from pathlib import Path
-from sqlalchemy import create_engine, MetaData
+
+from sqlalchemy import MetaData, create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.orm import scoped_session, sessionmaker
 
 md = MetaData()
 Base = declarative_base()

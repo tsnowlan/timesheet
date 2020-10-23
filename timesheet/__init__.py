@@ -1,14 +1,10 @@
-from timesheet.legacy_timesheet import time_delta
-import click
 import datetime
-import string
 
-from sqlalchemy.engine import create_engine
-from sqlalchemy.orm.session import sessionmaker
+import click
 
+from .app import add_log, db, edit_log, guess_day, print_all, print_day, print_range
+from .constants import DATETIME_FORMATS, DEF_DBFILE, TODAY, VALID_TARGETS
 from .util import target2dt, validate_action, validate_datetime, validate_target
-from .constants import *
-from .app import db, add_log, edit_log, guess_day, print_all, print_day, print_range
 
 
 @click.command(help="clock in and out")
@@ -39,9 +35,10 @@ def clock(log_type, log_time, guess, db_file) -> None:
 @click.command(help="print out timesheet entries for the given date(s)")
 @click.argument(
     "target",
-    metavar="< today | month | $month_name >",
+    metavar="< today | month | $month_name | ... >",
     default="today",
     callback=validate_target,
+    help=f"time period to print logs from. must be one of: {', '.join(VALID_TARGETS)}",
 )
 @click.option(
     "--export", is_flag=True, help=f"print in a form easy to paste into the timesheet"
@@ -59,32 +56,31 @@ def print_logs(ctx, target, export):
 
 
 @click.group(help="edit an existing log or logs")
+@click.argument(
+    "log_time",
+    metavar="[TIME_STRING]",
+    default=f"{datetime.datetime.now()}",
+    type=click.DateTime(DATETIME_FORMATS),
+    callback=validate_datetime,
+)
+@click.option("-i", "--clock-in", callback=validate_datetime, default=TODAY)
 @click.pass_context
 def edit_logs(ctx):
     raise NotImplemented()
+    new_log = edit_log()
 
 
 @click.group(help="backfill timesheet logs from system logs")
-@click.option(
-    "-s",
-    "--start-date",
-    "start",
-    metavar="DATE",
-    type=click.DateTime(),
-    required=True,
-    help="starting date to backfill",
-)
-@click.option(
-    "-e",
-    "--end-date",
-    "end",
-    metavar="DATE",
-    type=click.DateTime(),
-    help="non-inclusive end date for backfill, defaults to start + 1day",
+@click.argument(
+    "target",
+    metavar="< today | month | $month_name | ... >",
+    default="today",
+    callback=validate_target,
+    help=f"time period to backfill logs from. must be one of: {', '.join(VALID_TARGETS)}",
 )
 @click.pass_context
-def backfill(ctx, start, end) -> None:
-    raise NotImplemented()
+def backfill(ctx, target) -> None:
+    min_date, max_date = target2dt(target)
 
 
 @click.group()

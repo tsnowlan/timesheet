@@ -1,9 +1,10 @@
-import click
-from collections import namedtuple
 import datetime
-from pathlib import Path
 import sys
+from collections import namedtuple
+from pathlib import Path
 from typing import Any, Callable, Tuple
+
+import click
 
 from .constants import MONTHS, TODAY, VALID_TARGETS
 

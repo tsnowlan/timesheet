@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, Time, Boolean
+from sqlalchemy import Boolean, Column, Date, Time
 
 from .db import Base
 from .util import Log

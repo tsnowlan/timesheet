@@ -48,7 +48,7 @@ def clock(log_type, log_time, guess, db_file) -> None:
     if guess and log_type == "in":
         new_log = guess_day(log_time.date())
     else:
-        new_log = add_log(log_type, log_time.date(), log_time.time())
+        new_log = add_log(log_time.date(), log_type, log_time.time())
     print(f"Successfully clocked {log_type} on {new_log.day} at {new_log.time}")
 
 

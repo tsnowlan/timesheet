@@ -6,7 +6,7 @@ import string
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm.session import sessionmaker
 
-from .util import validate_action, validate_datetime
+from .util import validate_action, validate_datetime, validate_target
 from .constants import *
 from .app import db, get_day, get_range, add_log, edit_log, guess_day
 
@@ -41,7 +41,7 @@ def clock(log_type, log_time, guess, db_file) -> None:
     "target",
     metavar="< today | month | $month_name >",
     default="today",
-    callback=string.lower,
+    callback=validate_target,
 )
 @click.pass_context
 def print_logs(ctx, target):
@@ -87,7 +87,7 @@ def backfill(ctx, start, end) -> None:
 @click.option("-v", "--verbose", is_flag=True)
 @click.option("--debug", is_flag=True)
 @click.pass_context
-def run_cli(ctx, db_file, verbose, debug, foo) -> None:
+def run_cli(ctx, db_file, verbose, debug) -> None:
     ctx.ensure_object(dict)
 
     if debug and not verbose:

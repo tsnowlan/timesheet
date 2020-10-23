@@ -1,15 +1,16 @@
 import click
 from collections import namedtuple
 import datetime
+from pathlib import Path
 import sys
-from typing import Any
+from typing import Any, Callable
 
-from .constants import TODAY
+from .constants import TODAY, VALID_TARGETS
 
 
-def ensure_db(db: Path) -> function:
-    def decorator(func: function) -> function:
-        def inner(*args: list[Any], **kwargs: dict[Any]) -> function:
+def ensure_db(db: Path) -> Callable:
+    def decorator(func: Callable) -> Callable:
+        def inner(*args: list[Any], **kwargs: dict[Any]) -> Callable:
             db.ensure_db()
             return func(*args, **kwargs)
 
@@ -34,8 +35,14 @@ def log_date(log_line: str) -> datetime.datetime:
     return dt
 
 
-def lowercase_cb(some_str: str) -> str:
-    return some_str.lower()
+def validate_target(ctx: click.Context, param: click.Argument, target: str) -> str:
+    if target.lower() in VALID_TARGETS:
+        return target.lower()
+    print(
+        f"\nInvalid {ctx.info_name} value: {target}.\n\nMust be one of: {', '.join(VALID_TARGETS)}\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def validate_action(ctx: click.Context, param: click.Option, value: str) -> str:

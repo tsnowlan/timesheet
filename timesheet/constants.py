@@ -22,6 +22,9 @@ LOGIN_STR = "gnome-keyring-daemon started properly and unlocked keyring"
 LIDCLOSE_STR = "Lid closed"
 SHUTDOWN_STR = "System is powering down"
 
+VALID_TARGETS = ["today", "yesterday", "month", "lastmonth", "all"] + list(
+    MONTHS.keys()
+)
 
 TIME_FORMATS = ["%H:%M"]
 for suffix in [":%S", ".%f"]:

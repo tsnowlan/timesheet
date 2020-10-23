@@ -42,7 +42,7 @@ def print_range(
 
 
 @ensure_db(db)
-def print_all(print_format: str = "print") -> None:
+def print_all() -> None:
     last_row = None
     for row in db.session.query(Timesheet).order_by(Timesheet.date):
         if last_row and last_row.date.month != row.date.month:

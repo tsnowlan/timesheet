@@ -1,17 +1,20 @@
 import datetime
 import sys
 from collections import namedtuple
+from collections.abc import Callable
+from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Tuple
+from typing import Optional, Tuple
 
 import click
 
-from .constants import MONTHS, TODAY, VALID_TARGETS
+from .constants import MONTHS, TODAY, TOMORROW, VALID_TARGETS, YESTERDAY
 
 
 def ensure_db(db: Path) -> Callable:
     def decorator(func: Callable) -> Callable:
-        def inner(*args: list[Any], **kwargs: dict[Any]) -> Callable:
+        @wraps(func)
+        def inner(*args: list, **kwargs: dict) -> Callable:
             db.ensure_db()
             return func(*args, **kwargs)
 
@@ -21,7 +24,7 @@ def ensure_db(db: Path) -> Callable:
 
 
 def log_date(log_line: str) -> datetime.datetime:
-    (month, day, clock, log) = log_line.split(None, 3)
+    (month, day, clock, _) = log_line.split(None, 3)
     try:
         dt = datetime.datetime.strptime(
             f"{datetime.date.today().year} {month} {day:0>2} {clock}",
@@ -38,13 +41,13 @@ def log_date(log_line: str) -> datetime.datetime:
 
 def target2dt(target: str) -> Tuple[datetime.date]:
     if target in VALID_TARGETS[:2]:
-        return (TODAY if target == "today" else TODAY - datetime.timedelta(days=1), 0)
+        return (TODAY if target == "today" else YESTERDAY, 0)
     elif target == "all":
         return (None, None)
     else:
         if target == "month":
             min_date = TODAY.replace(day=1)
-            max_date = TODAY + datetime.timedelta(days=1)
+            max_date = TOMORROW
             return (min_date, max_date)
         elif target == "lastmonth":
             min_date = (TODAY.replace(day=1) - datetime.timedelta(days=1)).replace(
@@ -62,10 +65,20 @@ def target2dt(target: str) -> Tuple[datetime.date]:
         return (min_date, max_date)
 
 
-def validate_action(ctx: click.Context, param: click.Option, value: str) -> str:
-    if value.lower() in ("in", "out"):
-        return value.lower()
-    raise ValueError("You can only clock in or clock out")
+def str_in_list(
+    str_list: list[str], norm: Optional[str] = "lower"
+) -> Callable[[str], str]:
+    """returns a function that accepts a string and confirms that it is in the given list"""
+
+    def inner(ctx: click.Context, param: click.Option, value: str):
+        normed = getattr(value, norm)() if norm else value
+        if normed in str_list:
+            return normed
+        raise ValueError(
+            f"Invalid {ctx.info_name} value: {value}. Must be one of: {', '.join(str_list)}"
+        )
+
+    return inner
 
 
 def validate_datetime(
@@ -78,21 +91,20 @@ def validate_datetime(
     return dt.replace(second=0, microsecond=0)
 
 
-def validate_target(ctx: click.Context, param: click.Argument, target: str) -> str:
-    if target.lower() in VALID_TARGETS:
-        return target.lower()
-    print(
-        f"\nInvalid {ctx.info_name} value: {target}.\n\nMust be one of: {', '.join(VALID_TARGETS)}\n",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-
 Log = namedtuple(
     "Log",
     (
         "day",
         "type",
         "time",
+    ),
+)
+
+AuthLog = namedtuple(
+    "AuthLog",
+    (
+        "file",
+        "min_date",
+        "max_date",
     ),
 )

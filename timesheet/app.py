@@ -15,28 +15,40 @@ db = DB()
 
 # exported functions
 @ensure_db(db)
-def get_day(day: datetime.date) -> Timesheet:
-    try:
-        day_log = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
-    except Exception as e:
-        breakpoint()
-        raise e
-    return day_log
+def print_day(day: datetime.datetime) -> None:
+    day_log = get_day(day)
+    print(day_log)
 
 
 @ensure_db(db)
-def get_range(from_day: datetime.date, until_day: datetime.date) -> list[Timesheet]:
-    try:
-        logs = (
-            db.session.query(Timesheet)
-            .filter(Timesheet.date >= from_day, Timesheet.date < until_day)
-            .order_by(Timesheet.date)
-            .all()
-        )
-    except Exception as e:
-        breakpoint()
-        raise e
-    return logs
+def print_range(
+    day_start: datetime.date, day_end: datetime.date, print_format: str = "print"
+) -> None:
+    logs_by_day = {l.date: l for l in get_range(day_start, day_end)}
+
+    if print_format == "print":
+        curr_day = day_start
+        default_time = "None"
+        while curr_day < day_end:
+            if curr_day in logs_by_day:
+                print(logs_by_day[curr_day])
+            elif curr_day.weekday() > 4:
+                print(curr_day)
+            else:
+                print(f"{curr_day}\t{default_time : <8}\t{default_time : <8}")
+            curr_day += datetime.timedelta(days=1)
+    else:
+        raise NotImplemented()
+
+
+@ensure_db(db)
+def print_all(print_format: str = "print") -> None:
+    last_row = None
+    for row in db.session.query(Timesheet).order_by(Timesheet.date):
+        if last_row and last_row.date.month != row.date.month:
+            print()
+        print(row)
+        last_row = row
 
 
 @ensure_db(db)
@@ -107,9 +119,32 @@ def get_activity(
     return results
 
 
+def get_day(day: datetime.date) -> Timesheet:
+    try:
+        day_log = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
+    except Exception as e:
+        breakpoint()
+        raise e
+    return day_log
+
+
 def get_logs() -> list[Path]:
     log_dir = Path("/var/log")
     return log_dir.glob("auth.log*")
+
+
+def get_range(from_day: datetime.date, until_day: datetime.date) -> list[Timesheet]:
+    try:
+        logs = (
+            db.session.query(Timesheet)
+            .filter(Timesheet.date >= from_day, Timesheet.date < until_day)
+            .order_by(Timesheet.date)
+            .all()
+        )
+    except Exception as e:
+        breakpoint()
+        raise e
+    return logs
 
 
 def row_exists(idx: datetime.date) -> bool:

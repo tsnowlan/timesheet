@@ -21,8 +21,8 @@ class DB(object):
 
     def _init_session(self, echo_sql: bool) -> None:
         db_str = f"sqlite:///{self.db_file}"
-        self.engine = create_engine(db_str)
-        self.sessionmaker = sessionmaker(bind=self.engine, echo=echo_sql)
+        self.engine = create_engine(db_str, echo=echo_sql)
+        self.sessionmaker = sessionmaker(bind=self.engine)
         self.session = scoped_session(self.sessionmaker)
 
     def connect(self, db_file: str = None, echo_sql: bool = False) -> None:

@@ -3,9 +3,9 @@ from collections import namedtuple
 import datetime
 from pathlib import Path
 import sys
-from typing import Any, Callable
+from typing import Any, Callable, Tuple
 
-from .constants import TODAY, VALID_TARGETS
+from .constants import MONTHS, TODAY, VALID_TARGETS
 
 
 def ensure_db(db: Path) -> Callable:
@@ -35,14 +35,30 @@ def log_date(log_line: str) -> datetime.datetime:
     return dt
 
 
-def validate_target(ctx: click.Context, param: click.Argument, target: str) -> str:
-    if target.lower() in VALID_TARGETS:
-        return target.lower()
-    print(
-        f"\nInvalid {ctx.info_name} value: {target}.\n\nMust be one of: {', '.join(VALID_TARGETS)}\n",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+def target2dt(target: str) -> Tuple[datetime.date]:
+    if target in VALID_TARGETS[:2]:
+        return (TODAY if target == "today" else TODAY - datetime.timedelta(days=1), 0)
+    elif target == "all":
+        return (None, None)
+    else:
+        if target == "month":
+            min_date = TODAY.replace(day=1)
+            max_date = TODAY + datetime.timedelta(days=1)
+            return (min_date, max_date)
+        elif target == "lastmonth":
+            min_date = (TODAY.replace(day=1) - datetime.timedelta(days=1)).replace(
+                day=1
+            )
+        elif target in MONTHS:
+            min_date = TODAY.replace(month=MONTHS[target], day=1)
+        else:
+            raise ValueError(f"Invalid target received: {target}")
+        max_date = (
+            min_date.replace(month=min_date.month + 1)
+            if min_date.month < 12
+            else datetime.date(year=min_date.year + 1, month=1, day=1)
+        )
+        return (min_date, max_date)
 
 
 def validate_action(ctx: click.Context, param: click.Option, value: str) -> str:
@@ -59,6 +75,16 @@ def validate_datetime(
         dt = dt.replace(year=TODAY.year, month=TODAY.month, day=TODAY.day)
     # strip seconds
     return dt.replace(second=0, microsecond=0)
+
+
+def validate_target(ctx: click.Context, param: click.Argument, target: str) -> str:
+    if target.lower() in VALID_TARGETS:
+        return target.lower()
+    print(
+        f"\nInvalid {ctx.info_name} value: {target}.\n\nMust be one of: {', '.join(VALID_TARGETS)}\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 Log = namedtuple(

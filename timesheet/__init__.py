@@ -6,9 +6,9 @@ import string
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm.session import sessionmaker
 
-from .util import validate_action, validate_datetime, validate_target
+from .util import target2dt, validate_action, validate_datetime, validate_target
 from .constants import *
-from .app import db, get_day, get_range, add_log, edit_log, guess_day
+from .app import db, add_log, edit_log, guess_day, print_all, print_day, print_range
 
 
 @click.command(help="clock in and out")
@@ -43,9 +43,19 @@ def clock(log_type, log_time, guess, db_file) -> None:
     default="today",
     callback=validate_target,
 )
+@click.option(
+    "--export", is_flag=True, help=f"print in a form easy to paste into the timesheet"
+)
 @click.pass_context
-def print_logs(ctx, target):
-    print(f"target: {target}")
+def print_logs(ctx, target, export):
+    format = "export" if export else "print"
+    min_date, max_date = target2dt(target)
+    if min_date and max_date:
+        print_range(min_date, max_date)
+    elif min_date:
+        print_day(min_date)
+    else:
+        print_all()
 
 
 @click.group(help="edit an existing log or logs")
@@ -94,14 +104,14 @@ def run_cli(ctx, db_file, verbose, debug) -> None:
         verbose = True
     ctx.obj["verbose"] = verbose
     ctx.obj["debug"] = debug
-    db.connect(db_file)
+    db.connect(db_file, debug)
 
 
 ####
 
 run_cli.add_command(clock)
 run_cli.add_command(print_logs, "print")
-run_cli.add_command(edit_logs)
+run_cli.add_command(edit_logs, "edit")
 run_cli.add_command(backfill)
 
 

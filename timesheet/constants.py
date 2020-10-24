@@ -21,7 +21,7 @@ MONTHS = {
     "december": 12,
 }
 
-# times
+# formatting
 TIME_FORMATS = ["%H:%M"]
 for suffix in [":%S", ".%f"]:
     TIME_FORMATS.append(f"{TIME_FORMATS[-1]}{suffix}")
@@ -29,12 +29,16 @@ DATE_FORMATS = ["%Y-%m-%d"]
 for tf in TIME_FORMATS:
     DATE_FORMATS.append(f"{DATE_FORMATS[0]} {tf}")
 DATETIME_FORMATS = TIME_FORMATS + DATE_FORMATS
+ROW_HEADER = f"{'date': <8}\t{'Clock In': <8}\t{'Clock Out': <8}"
 
 # log parsing
-UNLOCK_STR = "unlocked login keyring"
-LOGIN_STR = "gnome-keyring-daemon started properly and unlocked keyring"
-LIDCLOSE_STR = "Lid closed"
-SHUTDOWN_STR = "System is powering down"
+LOGIN_STRS = (
+    "Lid opened",
+    "Operation 'sleep' finished",
+    "unlocked login keyring",
+    "gnome-keyring-daemon started properly and unlocked keyring",
+)
+LOGOUT_STRS = ("Lid closed", "System is powering down")
 
 # parameter validation
 VALID_TARGETS = ["today", "yesterday", "month", "lastmonth", "all"] + list(

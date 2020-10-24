@@ -4,7 +4,7 @@ from collections import namedtuple
 from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import click
 
@@ -88,7 +88,18 @@ def validate_datetime(
     if dt.date() == datetime.date(1900, 1, 1):
         dt = dt.replace(year=TODAY.year, month=TODAY.month, day=TODAY.day)
     # strip seconds
-    return dt.replace(second=0, microsecond=0)
+    return clean_time(dt.replace(second=0, microsecond=0))
+
+
+def clean_time(
+    dt_obj: Union[datetime.datetime, datetime.time]
+) -> Union[datetime.datetime, datetime.time]:
+    "strips out seconds and partial seconds"
+    return dt_obj.replace(second=0, microsecond=0)
+
+
+def round_time(dt_obj: datetime.time) -> datetime.time:
+    raise NotImplemented()
 
 
 Log = namedtuple(

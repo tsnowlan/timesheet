@@ -18,6 +18,7 @@ from .app import (
 from .constants import (
     DATETIME_FORMATS,
     DEF_DBFILE,
+    ROW_HEADER,
     TODAY,
     VALID_LOG_TYPES,
     VALID_TARGETS,
@@ -91,10 +92,11 @@ def print_logs(ctx, target, export):
 @click.pass_context
 def edit(ctx, log_time, log_type):
     new_log = edit_log(log_time.day(), log_type, log_time.time())
-    print(f"Updated timesheet entry:\n{new_log}")
+    print(f"Updated timesheet entry:\n{ROW_HEADER}")
+    print(new_log)
 
 
-@click.group(help="backfill timesheet logs from system logs")
+@click.command(help="backfill timesheet logs from system logs")
 @click.argument(
     "target",
     metavar="< today | month | $month_name | ... >",
@@ -107,21 +109,31 @@ def edit(ctx, log_time, log_type):
     is_flag=True,
     help="Requires user input before creating or modifying timesheet logs",
 )
+@click.option(
+    "-f",
+    "--overwrite",
+    is_flag=True,
+    help="overwrite existing entries without prompting",
+)
 @click.pass_context
-def backfill(ctx, target: str, validate: bool) -> None:
+def backfill(ctx, target: str, validate: bool, overwrite: bool) -> None:
     f"""
     Backfills timesheet days in the given period from system logs
 
     Valid arguments: {', '.join(VALID_TARGETS)}
     """
+    print(f"got target={target}, validate={validate}, overwrite={overwrite}")
     min_date, max_date = target2dt(target)
     if min_date and not max_date:
         max_date = min_date = datetime.timedelta(days=1)
-    elif not min_date and not max_date and ctx.obj["debug"]:
-        print(f"Backfilling as far as the logs will let us...", sys.stderr)
-    new_logs = backfill_days(min_date, max_date, any(validate, ctx.obj["debug"]))
+    elif not min_date and not max_date:  # and ctx.obj["debug"]:
+        print(f"Backfilling as far as the logs will let us...", file=sys.stderr)
+    new_logs = backfill_days(
+        min_date, max_date, any([validate, ctx.obj["debug"]]), overwrite
+    )
     if new_logs:
         print(f"Created or updated {len(new_logs)} timesheet entries:")
+        print(ROW_HEADER)
         for log in new_logs:
             print(log)
     else:

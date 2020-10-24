@@ -13,7 +13,7 @@ class Timesheet(Base):
     is_flex = Column(Boolean, default=False)
 
     def __repr__(self) -> str:
-        return f"<Timesheet date={self.date} clock_in={self.clock_in} clock_out={self.clock_out}"
+        return f"<Timesheet date={self.date} clock_in={self.clock_in} clock_out={self.clock_out} flex={self.is_flex}>"
 
     def __str__(self) -> str:
         return f"{self.date}\t{self.clock_in}\t{self.clock_out}"

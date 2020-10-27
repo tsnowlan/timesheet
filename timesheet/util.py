@@ -1,21 +1,17 @@
 import datetime
 import sys
 from collections import namedtuple
-from collections.abc import Callable
 from functools import wraps
-from pathlib import Path
-from typing import Optional, Tuple, Union
 
-import click
-
-from .constants import MONTHS, TODAY, TOMORROW, VALID_TARGETS, YESTERDAY
+from .constants import VALID_TARGETS, YESTERDAY, TOMORROW, TODAY, MONTHS
 
 
-def ensure_db(db: Path) -> Callable:
-    def decorator(func: Callable) -> Callable:
+def ensure_db(db):
+    def decorator(func):
         @wraps(func)
-        def inner(*args: list, **kwargs: dict) -> Callable:
-            db.ensure_db()
+        def inner(*args, **kwargs):
+            db._validate_conn()
+            db._ensure_db()
             return func(*args, **kwargs)
 
         return inner
@@ -23,7 +19,7 @@ def ensure_db(db: Path) -> Callable:
     return decorator
 
 
-def log_date(log_line: str) -> datetime.datetime:
+def log_date(log_line):
     (month, day, clock, _) = log_line.split(None, 3)
     try:
         dt = datetime.datetime.strptime(
@@ -39,9 +35,9 @@ def log_date(log_line: str) -> datetime.datetime:
     return dt
 
 
-def target2dt(target: str) -> Tuple[datetime.date]:
+def target2dt(target):
     if target in VALID_TARGETS[:2]:
-        return (TODAY if target == "today" else YESTERDAY, 0)
+        return (TODAY if target == "today" else YESTERDAY, None)
     elif target == "all":
         return (None, None)
     else:
@@ -65,12 +61,10 @@ def target2dt(target: str) -> Tuple[datetime.date]:
         return (min_date, max_date)
 
 
-def str_in_list(
-    str_list: list[str], norm: Optional[str] = "lower"
-) -> Callable[[str], str]:
+def str_in_list(str_list, norm="lower"):
     """returns a function that accepts a string and confirms that it is in the given list"""
 
-    def inner(ctx: click.Context, param: click.Option, value: str):
+    def inner(ctx, param, value):
         normed = getattr(value, norm)() if norm else value
         if normed in str_list:
             return normed
@@ -81,25 +75,21 @@ def str_in_list(
     return inner
 
 
-def validate_datetime(
-    ctx: click.Context, param: click.Option, dt: datetime.datetime
-) -> datetime.datetime:
+def validate_datetime(ctx, param, dt):
     # replace default date on time string parse with today's date
-    if dt.date() == datetime.date(1900, 1, 1):
+    if isinstance(dt, datetime.datetime) and dt.date() == datetime.date(1900, 1, 1):
         dt = dt.replace(year=TODAY.year, month=TODAY.month, day=TODAY.day)
     # strip seconds
     return clean_time(dt.replace(second=0, microsecond=0))
 
 
-def clean_time(
-    dt_obj: Union[datetime.datetime, datetime.time]
-) -> Union[datetime.datetime, datetime.time]:
+def clean_time(dt_obj):
     "strips out seconds and partial seconds"
     return dt_obj.replace(second=0, microsecond=0)
 
 
-def round_time(dt_obj: datetime.time) -> datetime.time:
-    raise NotImplemented()
+def round_time(dt_obj):
+    raise NotImplemented
 
 
 Log = namedtuple(

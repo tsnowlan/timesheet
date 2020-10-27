@@ -3,7 +3,6 @@ from pathlib import Path
 import sys
 
 import click
-from sqlalchemy.sql.operators import is_
 
 from .app import (
     add_log,
@@ -38,16 +37,18 @@ from .util import str_in_list, target2dt, validate_datetime
     callback=validate_datetime,
 )
 @click.option("-g", "--guess", is_flag=True, help="Guess login time from auth logs")
+@click.option("-f", "--overwrite", is_flag=True, help="overwrite any exisiting entry")
 @click.option(
     "-d",
     "--db-file",
     type=click.Path(dir_okay=False, writable=True),
     default=DEF_DBFILE,
 )
-def clock(log_type, log_time, guess, db_file) -> None:
+def clock(log_type, log_time, guess, overwrite, db_file):
     db.connect(db_file)
-    if guess and log_type == "in":
-        new_log = guess_day(log_time.date())
+    if guess:
+        guess_args = [log_type == x for x in VALID_LOG_TYPES] + [overwrite]
+        new_log = guess_day(log_time.date(), *guess_args)
     else:
         new_log = add_log(log_time.date(), log_type, log_time.time())
     print(f"Successfully clocked {log_type} on {new_log.day} at {new_log.time}")
@@ -116,16 +117,17 @@ def edit(ctx, log_time, log_type):
     help="overwrite existing entries without prompting",
 )
 @click.pass_context
-def backfill(ctx, target: str, validate: bool, overwrite: bool) -> None:
+def backfill(ctx, target, validate, overwrite):
     f"""
     Backfills timesheet days in the given period from system logs
 
     Valid arguments: {', '.join(VALID_TARGETS)}
     """
+    # TODO: option to fill days outside of log range with "standard" time
     print(f"got target={target}, validate={validate}, overwrite={overwrite}")
     min_date, max_date = target2dt(target)
     if min_date and not max_date:
-        max_date = min_date = datetime.timedelta(days=1)
+        max_date = min_date + datetime.timedelta(days=1)
     elif not min_date and not max_date:  # and ctx.obj["debug"]:
         print(f"Backfilling as far as the logs will let us...", file=sys.stderr)
     new_logs = backfill_days(
@@ -150,7 +152,7 @@ def backfill(ctx, target: str, validate: bool, overwrite: bool) -> None:
 )
 @click.option("--debug", is_flag=True)
 @click.pass_context
-def run_cli(ctx, db_file: Path, debug: bool) -> None:
+def run_cli(ctx, db_file, debug):
     ctx.ensure_object(dict)
     ctx.obj["debug"] = debug
     db.connect(db_file, debug)
@@ -164,5 +166,5 @@ run_cli.add_command(edit)
 run_cli.add_command(backfill)
 
 
-def main() -> None:
+def main():
     run_cli(obj={})

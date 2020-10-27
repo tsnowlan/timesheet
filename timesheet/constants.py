@@ -1,6 +1,6 @@
 import datetime
 from pathlib import Path
-from typing import Literal
+
 
 # dates
 TODAY = datetime.date.today()
@@ -44,8 +44,7 @@ LOGOUT_STRS = ("Lid closed", "System is powering down")
 VALID_TARGETS = ["today", "yesterday", "month", "lastmonth", "all"] + list(
     MONTHS.keys()
 )
-LOG_TYPES = Literal["in", "out"]
-VALID_LOG_TYPES = LOG_TYPES.__args__
+VALID_LOG_TYPES = ["in", "out"]
 
 # parameter defaults
 DEF_DBFILE = Path().home() / "timesheet2.db"

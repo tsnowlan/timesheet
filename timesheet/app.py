@@ -3,37 +3,34 @@ import datetime
 import gzip
 import sys
 from pathlib import Path
-from typing import Literal, Optional
 
 import sqlalchemy.exc
 
 from .constants import (
     LOGIN_STRS,
     LOGOUT_STRS,
-    LOG_TYPES,
     ROW_HEADER,
     TOMORROW,
     VALID_LOG_TYPES,
 )
 from .db import DB
+from .exceptions import NoData, ExistingData
 from .models import Timesheet
-from .util import AuthLog, Log, clean_time, ensure_db, log_date
+from .util import AuthLog, clean_time, ensure_db, log_date
 
 # exported objects
 db = DB()
 
 # exported functions
 @ensure_db(db)
-def print_day(day: datetime.datetime) -> None:
+def print_day(day):
     day_log = get_day(day, False)
     print(ROW_HEADER)
     print(day_log)
 
 
 @ensure_db(db)
-def print_range(
-    from_day: datetime.date, until_day: datetime.date, print_format: str = "print"
-) -> None:
+def print_range(from_day, until_day, print_format="print"):
     logs_by_day = {l.date: l for l in get_range(from_day, until_day)}
 
     if print_format == "print":
@@ -49,11 +46,11 @@ def print_range(
                 print(f"{curr_day}\t{default_time : <8}\t{default_time : <8}")
             curr_day += datetime.timedelta(days=1)
     else:
-        raise NotImplemented()
+        raise NotImplemented
 
 
 @ensure_db(db)
-def print_all() -> None:
+def print_all():
     last_row = None
     print(ROW_HEADER)
     for row in db.session.query(Timesheet).order_by(Timesheet.date):
@@ -64,9 +61,7 @@ def print_all() -> None:
 
 
 @ensure_db(db)
-def add_log(
-    log_day: datetime.date, log_type: LOG_TYPES, log_time: datetime.time
-) -> Log:
+def add_log(log_day, log_type, log_time):
     log_data = {
         "day": log_day,
         "clock_in": log_time if log_type == "in" else None,
@@ -80,9 +75,7 @@ def add_log(
 
 
 @ensure_db(db)
-def edit_log(
-    log_day: datetime.date, log_type: LOG_TYPES, log_time: datetime.time
-) -> Log:
+def edit_log(log_day, log_type, log_time):
     log_data = {
         "day": log_day,
         f"clock_{log_type}": log_time,
@@ -99,20 +92,20 @@ def edit_log(
 
 @ensure_db(db)
 def guess_day(
-    day: datetime.date,
-    clock_in: bool = True,
-    clock_out: bool = False,
-    overwrite: bool = False,
-) -> Log:
+    day,
+    clock_in=True,
+    clock_out=False,
+    overwrite=False,
+):
     # check for an existing entry and make sure we're not clobbering (unintentionally)
     day_log = get_day(day)
     if day_log:
         if clock_in and day_log.clock_in and not overwrite:
-            raise RuntimeError(
+            raise ExistingData(
                 "Cannot guess for a clock in time when one is already set unless overwrite is used"
             )
         if clock_out and day_log.clock_out and not overwrite:
-            raise RuntimeError(
+            raise ExistingData(
                 "Cannot guess for a clock out time when one is already set unless overwrite is used"
             )
 
@@ -150,11 +143,11 @@ def guess_day(
 
 @ensure_db(db)
 def backfill_days(
-    from_day: Optional[datetime.date] = None,
-    until_day: Optional[datetime.date] = None,
-    validate: bool = False,
-    overwrite: bool = False,
-) -> list[Timesheet]:
+    from_day=None,
+    until_day=None,
+    validate=False,
+    overwrite=False,
+):
     """
     Backfill entries on weekdays in the given range based on auth.log activity.
 
@@ -171,10 +164,23 @@ def backfill_days(
         until_day = TOMORROW
     print(f"Backfilling from {from_day} until {until_day}")
 
+    """
+    from_day = 2020-10-26, to_day = 2020-10-27
+    min_date = 2020-10-21, max_date = 2020-10-27
+    
+    from_day >= min_date and from_day <= max_date
+    from_day < min_date and until_day > min_date
+
+
+
+    """
+
     all_activity = dict()
     for authlog in idx:
-        if (from_day <= authlog.min_date and authlog.min_date < until_day) or (
-            authlog.max_date >= from_day and authlog.max_date < until_day
+        # target range: [from_day, until_day)
+        # log dates: [min_date, max_date]
+        if (from_day >= authlog.min_date and from_day <= authlog.max_date) or (
+            from_day < authlog.min_date and until_day > authlog.min_date
         ):
             log_activity = get_activity(authlog.file, None, True, True)
             for log_day in log_activity:
@@ -228,10 +234,10 @@ def backfill_days(
 
 
 def merge_times(
-    current: Timesheet,
-    new_times: tuple[int, int],
-    validate: bool = False,
-    overwrite: bool = False,
+    current,
+    new_times,
+    validate=False,
+    overwrite=False,
 ):
     if new_times:
         if validate:
@@ -280,7 +286,7 @@ def merge_times(
     return current
 
 
-def get_resp(msg: str) -> bool:
+def get_resp(msg):
     pos = ("y", "yes")
     neg = ("n", "no")
     resp = input(f"{msg}  [y/n] ").lower()
@@ -291,11 +297,11 @@ def get_resp(msg: str) -> bool:
 
 
 def get_activity(
-    logfile: Path,
-    day: Optional[datetime.date] = None,
-    log_in: bool = True,
-    log_out: bool = False,
-) -> defaultdict[datetime.date, dict[Literal["in", "out"], list[datetime.datetime]]]:
+    logfile,
+    day=None,
+    log_in=True,
+    log_out=False,
+):
     results = defaultdict(lambda: {"in": [], "out": []})
 
     open_func = open
@@ -330,7 +336,7 @@ def get_activity(
     return results
 
 
-def index_logs() -> list[AuthLog]:
+def index_logs():
     log_index = list()
     for logfile in get_logs():
         open_func = open
@@ -357,20 +363,18 @@ def index_logs() -> list[AuthLog]:
     return sorted(log_index, key=lambda x: x.min_date)
 
 
-def get_day(day: datetime.date, missing_okay: bool = True) -> Timesheet:
+def get_day(day, missing_okay=True):
     day_log = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
     if day_log is None and not missing_okay:
         raise RuntimeError(f"Unable to find timesheet entry for {day}")
     return day_log
 
 
-def get_logs(log_dir: Path = Path("/var/log")) -> list[Path]:
+def get_logs(log_dir=Path("/var/log")):
     return log_dir.glob("auth.log*")
 
 
-def get_range(
-    from_day: datetime.date, until_day: datetime.date, missing_okay: bool = True
-) -> list[Timesheet]:
+def get_range(from_day, until_day, missing_okay=True):
     logs = (
         db.session.query(Timesheet)
         .filter(Timesheet.date >= from_day, Timesheet.date < until_day)
@@ -384,16 +388,16 @@ def get_range(
     return logs
 
 
-def row_exists(idx: datetime.date) -> bool:
+def row_exists(idx):
     return bool(get_day(idx))
 
 
 def add_row(
-    day: datetime.date,
-    clock_in: Optional[datetime.time] = None,
-    clock_out: Optional[datetime.time] = None,
-    is_flex: Optional[bool] = False,
-) -> Timesheet:
+    day,
+    clock_in=None,
+    clock_out=None,
+    is_flex=False,
+):
     if not any([clock_in, clock_out]):
         raise ValueError(
             "You must specify at least one time to create a new timesheet entry"
@@ -418,11 +422,11 @@ def add_row(
 
 
 def update_row(
-    day: datetime.date,
-    clock_in: datetime.time = None,
-    clock_out: datetime.time = None,
+    day,
+    clock_in=None,
+    clock_out=None,
     overwrite=False,
-) -> Timesheet:
+):
     row = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
 
     bail = list()

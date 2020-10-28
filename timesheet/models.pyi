@@ -1,5 +1,6 @@
 import datetime
 from sqlalchemy import Boolean, Column, Date, Time
+from typing import List, Dict, Any
 
 from .db import Base as Base
 from .util import Log as Log
@@ -13,8 +14,8 @@ class Timesheet(Base):
         clock_in: datetime.time,
         clock_out: datetime.time,
         is_flex: bool = False,
-        *args,
-        **kwargs
+        *args: List[Any],
+        **kwargs: Dict[str, Any]
     ) -> None:
         ...
 

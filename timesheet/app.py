@@ -1,20 +1,14 @@
-from collections import defaultdict
 import datetime
 import gzip
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 import sqlalchemy.exc
 
-from .constants import (
-    LOGIN_STRS,
-    LOGOUT_STRS,
-    ROW_HEADER,
-    TOMORROW,
-    VALID_LOG_TYPES,
-)
+from .constants import LOGIN_STRS, LOGOUT_STRS, ROW_HEADER, TOMORROW, VALID_LOG_TYPES
 from .db import DB
-from .exceptions import NoData, ExistingData
+from .exceptions import ExistingData, NoData
 from .models import Timesheet
 from .util import AuthLog, clean_time, ensure_db, log_date
 
@@ -164,17 +158,6 @@ def backfill_days(
         until_day = TOMORROW
     print(f"Backfilling from {from_day} until {until_day}")
 
-    """
-    from_day = 2020-10-26, to_day = 2020-10-27
-    min_date = 2020-10-21, max_date = 2020-10-27
-    
-    from_day >= min_date and from_day <= max_date
-    from_day < min_date and until_day > min_date
-
-
-
-    """
-
     all_activity = dict()
     for authlog in idx:
         # target range: [from_day, until_day)
@@ -218,7 +201,6 @@ def backfill_days(
     if not new_days:
         return
 
-    breakpoint()
     try:
         db.session.add_all(new_days)
         db.session.commit()
@@ -366,7 +348,7 @@ def index_logs():
 def get_day(day, missing_okay=True):
     day_log = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
     if day_log is None and not missing_okay:
-        raise RuntimeError(f"Unable to find timesheet entry for {day}")
+        raise NoData(db.db_file, day)
     return day_log
 
 

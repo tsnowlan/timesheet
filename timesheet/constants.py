@@ -1,5 +1,6 @@
 import datetime
 from pathlib import Path
+from typing import Literal
 
 
 # dates
@@ -45,6 +46,7 @@ VALID_TARGETS = ["today", "yesterday", "month", "lastmonth", "all"] + list(
     MONTHS.keys()
 )
 VALID_LOG_TYPES = ["in", "out"]
+LOG_TYPES = Literal["in", "out"]
 
 # parameter defaults
 DEF_DBFILE = Path().home() / "timesheet2.db"

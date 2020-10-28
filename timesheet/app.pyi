@@ -1,7 +1,7 @@
 from collections import defaultdict
 import datetime
 from pathlib import Path
-from typing import List, Literal, Optional, Dict
+from typing import List, Literal, Optional, Dict, DefaultDict, Union, overload
 
 from .constants import LOG_TYPES
 from .models import Timesheet
@@ -10,7 +10,7 @@ from .util import (
     AuthLog as AuthLog,
 )
 
-# exported functions
+
 def print_day(day: datetime.datetime) -> None:
     ...
 
@@ -76,7 +76,7 @@ def get_activity(
     day: Optional[datetime.date] = None,
     log_in: bool = True,
     log_out: bool = False,
-) -> defaultdict[datetime.date, Dict[Literal["in", "out"], List[datetime.datetime]]]:
+) -> DefaultDict[datetime.date, Dict[LOG_TYPES, List[datetime.datetime]]]:
     ...
 
 
@@ -84,7 +84,13 @@ def index_logs() -> List[AuthLog]:
     ...
 
 
-def get_day(day: datetime.date, missing_okay: bool) -> Optional[Timesheet]:
+@overload
+def get_day(day: datetime.date, missing_okay: Literal[False]) -> Timesheet:
+    ...
+
+
+@overload
+def get_day(day: datetime.date, missing_okay: bool = True) -> Optional[Timesheet]:
     ...
 
 
@@ -113,8 +119,8 @@ def add_row(
 
 def update_row(
     day: datetime.date,
-    clock_in: datetime.time = None,
-    clock_out: datetime.time = None,
-    overwrite=False,
+    clock_in: Optional[datetime.time] = None,
+    clock_out: Optional[datetime.time] = None,
+    overwrite: bool = False,
 ) -> Timesheet:
     ...

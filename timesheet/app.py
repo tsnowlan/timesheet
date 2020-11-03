@@ -3,29 +3,65 @@ import gzip
 import sys
 from collections import defaultdict
 from pathlib import Path
+from typing import DefaultDict, Dict, Iterable, List, Literal, Optional, Tuple
 
 import sqlalchemy.exc
+from sqlalchemy.sql.sqltypes import Time
 
-from .constants import LOGIN_STRS, LOGOUT_STRS, ROW_HEADER, TOMORROW, VALID_LOG_TYPES
+from .config import Config
+from .constants import (
+    LogType,
+    LOGIN_STRS,
+    LOGOUT_STRS,
+    ROW_HEADER,
+    TODAY,
+    TOMORROW,
+)
 from .db import DB
 from .exceptions import ExistingData, NoData
 from .models import Timesheet
-from .util import AuthLog, clean_time, ensure_db, log_date
+from .types import RowInfo
+from .util import AuthLog, Log, clean_time, ensure_db, log_date, round_time
 
 # exported objects
-db = DB()
+db: DB = DB()
+config: Config = Config()
 
 # exported functions
 @ensure_db(db)
-def print_day(day):
+def print_day(day: datetime.date) -> None:
     day_log = get_day(day, False)
     print(ROW_HEADER)
     print(day_log)
 
 
 @ensure_db(db)
-def print_range(from_day, until_day, print_format="print"):
+def print_range(
+    from_day: Optional[datetime.date],
+    until_day: Optional[datetime.date],
+    print_format: Literal["print", "export"] = "print",
+) -> None:
     logs_by_day = {l.date: l for l in get_range(from_day, until_day)}
+    if len(logs_by_day) == 0:
+        if from_day and until_day:
+            raise NoData(
+                db.db_file,
+                from_day,
+                f"No data found between {from_day} and {until_day}",
+            )
+        elif from_day:
+            raise NoData(
+                db.db_file, from_day, f"No data found between {from_day} and {TOMORROW}"
+            )
+        elif until_day:
+            raise NoData(db.db_file, until_day, f"No data found before {TOMORROW}")
+        else:
+            raise NoData(db.db_file, TODAY, f"No log entries found, table is empty")
+
+    if from_day is None:
+        from_day = sorted(logs_by_day.keys())[0]
+    if until_day is None:
+        until_day = TOMORROW
 
     if print_format == "print":
         curr_day = from_day
@@ -39,12 +75,28 @@ def print_range(from_day, until_day, print_format="print"):
             else:
                 print(f"{curr_day}\t{default_time : <8}\t{default_time : <8}")
             curr_day += datetime.timedelta(days=1)
+    elif print_format == "export":
+        for log_type in LogType:
+            print(f"{log_type.value.upper()}")
+            print("=" * 10)
+            curr_day = from_day
+            while curr_day < until_day:
+                if curr_day in logs_by_day:
+                    print(logs_by_day[curr_day].log(log_type).time)
+                elif curr_day.weekday() > 4:
+                    print()
+                else:
+                    print(None)
+
+                curr_day += datetime.timedelta(days=1)
+            print()
+
     else:
-        raise NotImplemented
+        raise ValueError("Specify either 'print' or 'export' format")
 
 
 @ensure_db(db)
-def print_all():
+def print_all() -> None:
     last_row = None
     print(ROW_HEADER)
     for row in db.session.query(Timesheet).order_by(Timesheet.date):
@@ -55,11 +107,11 @@ def print_all():
 
 
 @ensure_db(db)
-def add_log(log_day, log_type, log_time):
+def add_log(log_day: datetime.date, log_type: LogType, log_time: datetime.time) -> Log:
     log_data = {
         "day": log_day,
-        "clock_in": log_time if log_type == "in" else None,
-        "clock_out": log_time if log_type == "out" else None,
+        "clock_in": log_time if log_type == LogType.IN else None,
+        "clock_out": log_time if log_type == LogType.OUT else None,
     }
     if row_exists(log_day):
         new_row = update_row(**log_data)
@@ -69,39 +121,26 @@ def add_log(log_day, log_type, log_time):
 
 
 @ensure_db(db)
-def edit_log(log_day, log_type, log_time):
-    log_data = {
-        "day": log_day,
-        f"clock_{log_type}": log_time,
-    }
+def edit_log(
+    log_day: datetime.date, log_type: LogType, log_time: datetime.time
+) -> Timesheet:
+    log_data = {"day": log_day, log_type.value: log_time, "overwrite": True}
     if row_exists(log_day):
         new_row = update_row(**log_data)
     else:
-        other_type = "clock_in" if log_type == "out" else "clock_out"
-        log_data[other_type] = None
-        print(f"No existing logs on {log_day}", file=sys.stderr)
-        sys.exit(1)
-    return new_row.log("in")
+        raise NoData(db.db_file, log_day)
+    return new_row
 
 
 @ensure_db(db)
 def guess_day(
-    day,
-    clock_in=True,
-    clock_out=False,
-    overwrite=False,
-):
-    # check for an existing entry and make sure we're not clobbering (unintentionally)
+    day: datetime.date,
+    clock_in: bool = True,
+    clock_out: bool = False,
+    overwrite: bool = False,
+) -> Timesheet:
+    # check for an existing entry
     day_log = get_day(day)
-    if day_log:
-        if clock_in and day_log.clock_in and not overwrite:
-            raise ExistingData(
-                "Cannot guess for a clock in time when one is already set unless overwrite is used"
-            )
-        if clock_out and day_log.clock_out and not overwrite:
-            raise ExistingData(
-                "Cannot guess for a clock out time when one is already set unless overwrite is used"
-            )
 
     logins = list()
     logouts = list()
@@ -110,21 +149,32 @@ def guess_day(
         if len(log_activity) == 0:
             continue
 
-        if len(log_activity[day]["in"]):
-            logins.extend(log_activity[day]["in"])
+        if len(log_activity[day][LogType.IN]):
+            logins.extend(log_activity[day][LogType.IN])
 
-        if len(log_activity[day]["out"]):
-            logouts.extend(log_activity[day]["out"])
+        if len(log_activity[day][LogType.OUT]):
+            logouts.extend(log_activity[day][LogType.OUT])
 
     if len(logouts) == 0 and len(logins) == 0:
         print(f"Unable to find any activity on {day}", file=sys.stderr)
         sys.exit(1)
 
-    row_info = {"date": day}
-    if logins:
-        row_info["clock_in"] = logins[0].time()
-    if logouts:
-        row_info["clock_out"] = logouts[-1].time()
+    # have to do this extra explicitly so typing works
+    row_info = {
+        "day": day,
+        "clock_in": logins[0] if logins else None,
+        "clock_out": logouts[-1] if logouts else None,
+    }
+    if row_info["clock_in"] is None:
+        del row_info["clock_in"]
+    if row_info["clock_out"] is None:
+        del row_info["clock_out"]
+
+    if row_info.get("clock_in") and day_log and day_log.clock_in and not overwrite:
+        raise ExistingData((day_log, "clock_in"), row_info["clock_in"])
+
+    if row_info.get("clock_out") and day_log and day_log.clock_out and not overwrite:
+        raise ExistingData((day_log, "clock_out"), row_info["clock_out"])
 
     # make sure nothing wonky is happening
     if row_info.get("clock_in") and row_info.get("clock_out"):
@@ -137,11 +187,11 @@ def guess_day(
 
 @ensure_db(db)
 def backfill_days(
-    from_day=None,
-    until_day=None,
-    validate=False,
-    overwrite=False,
-):
+    from_day: Optional[datetime.date] = None,
+    until_day: Optional[datetime.date] = None,
+    validate: bool = False,
+    overwrite: bool = False,
+) -> Optional[List[Timesheet]]:
     """
     Backfill entries on weekdays in the given range based on auth.log activity.
 
@@ -171,7 +221,7 @@ def backfill_days(
                 if log_day < from_day or log_day >= until_day or log_day.weekday() > 4:
                     continue
                 if log_day in all_activity:
-                    for lt in VALID_LOG_TYPES:
+                    for lt in LogType:
                         all_activity[log_day][lt].extend(log_activity[log_day][lt])
                 else:
                     all_activity[log_day] = log_activity[log_day]
@@ -192,13 +242,13 @@ def backfill_days(
             new_row = Timesheet(date=a_day, clock_in=clock_in, clock_out=clock_out)
             audit_list.append((new_row, None))
 
-    new_days = list()
+    new_days: List[Timesheet] = []
     for (log_obj, updates) in audit_list:
         new_obj = merge_times(log_obj, updates, validate, overwrite)
         if new_obj:
             new_days.append(new_obj)
 
-    if not new_days:
+    if len(new_days) == 0:
         return
 
     try:
@@ -216,11 +266,11 @@ def backfill_days(
 
 
 def merge_times(
-    current,
-    new_times,
-    validate=False,
-    overwrite=False,
-):
+    current: Timesheet,
+    new_times: Tuple[Optional[datetime.time], Optional[datetime.time]],
+    validate: bool = False,
+    overwrite: bool = False,
+) -> Optional[Timesheet]:
     if new_times:
         if validate:
             ci_str = f"in {current.clock_in}"
@@ -237,9 +287,9 @@ def merge_times(
             # skip any existing values unless overwrite enabled
             skip = []
             if new_times[0] and current.clock_in and not overwrite:
-                skip.append("clock_in")
+                skip.append(LogType.IN)
             if new_times[1] and current.clock_out and not overwrite:
-                skip.append("clock_out")
+                skip.append(LogType.OUT)
 
             if len(skip) == 2:
                 # "new" times match or won't overwrite existing values
@@ -247,8 +297,8 @@ def merge_times(
             elif len(skip) == 1:
                 # remove the one that got skipped
                 new_times = (
-                    new_times[0] if "clock_in" not in skip else None,
-                    new_times[1] if "clock_out" not in skip else None,
+                    new_times[0] if LogType.IN not in skip else None,
+                    new_times[1] if LogType.OUT not in skip else None,
                 )
             # else leave new_times as is: two new values to update (unlikely unless overwrite)
     else:
@@ -260,15 +310,15 @@ def merge_times(
 
     if new_times and any(new_times):
         if new_times[0]:
-            current.clock_in = new_times[0]
+            current.clock_in = new_times[0]  # type: ignore
         if new_times[1]:
-            current.clock_out = new_times[1]
+            current.clock_out = new_times[1]  # type: ignore
     else:
         return
     return current
 
 
-def get_resp(msg):
+def get_resp(msg: str) -> bool:
     pos = ("y", "yes")
     neg = ("n", "no")
     resp = input(f"{msg}  [y/n] ").lower()
@@ -279,12 +329,14 @@ def get_resp(msg):
 
 
 def get_activity(
-    logfile,
-    day=None,
-    log_in=True,
-    log_out=False,
-):
-    results = defaultdict(lambda: {"in": [], "out": []})
+    logfile: Path,
+    day: Optional[datetime.date] = None,
+    log_in: bool = True,
+    log_out: bool = False,
+) -> DefaultDict[datetime.date, Dict[LogType, List[datetime.time]]]:
+    results: DefaultDict[
+        datetime.date, Dict[LogType, List[datetime.time]]
+    ] = defaultdict(lambda: {LogType.IN: [], LogType.OUT: []})
 
     open_func = open
     if logfile.name.endswith(".gz"):
@@ -293,6 +345,7 @@ def get_activity(
         for log_line in logs:
             line_dt = log_date(log_line)
             line_day = line_dt.date()
+            line_time = line_dt.time()
 
             # if no day passed, get all activity from file
             if day:
@@ -305,20 +358,20 @@ def get_activity(
             if log_in and any(
                 [True for login_str in LOGIN_STRS if login_str in log_line]
             ):
-                log_type = "in"
+                log_type = LogType.IN
             elif log_out and any(
                 [True for logout_str in LOGOUT_STRS if logout_str in log_line]
             ):
-                log_type = "out"
+                log_type = LogType.OUT
             else:
                 continue
 
-            results[line_day][log_type].append(clean_time(line_dt.time()))
+            results[line_day][log_type].append(clean_time(line_time))
 
     return results
 
 
-def index_logs():
+def index_logs() -> List[AuthLog]:
     log_index = list()
     for logfile in get_logs():
         open_func = open
@@ -335,9 +388,11 @@ def index_logs():
                 if first_line is None:
                     first_line = logline
                 last_line = logline
-        if first_line is None:
-            print(f"Encountered empty authlog {logfile}, skipping")
+
+        if first_line is None or last_line is None:
+            print(f"Malformed authlog {logfile}, skipping", file=sys.stderr)
             continue
+
         min_date = log_date(first_line).date()
         max_date = log_date(last_line).date()
         log_index.append(AuthLog(logfile, min_date, max_date))
@@ -345,24 +400,31 @@ def index_logs():
     return sorted(log_index, key=lambda x: x.min_date)
 
 
-def get_day(day, missing_okay=True):
+def get_day(day: datetime.date, missing_okay: bool = True) -> Timesheet:
     day_log = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
     if day_log is None and not missing_okay:
         raise NoData(db.db_file, day)
     return day_log
 
 
-def get_logs(log_dir=Path("/var/log")):
+def get_logs(log_dir: Path = Path("/var/log")) -> Iterable[Path]:
     return log_dir.glob("auth.log*")
 
 
-def get_range(from_day, until_day, missing_okay=True):
-    logs = (
-        db.session.query(Timesheet)
-        .filter(Timesheet.date >= from_day, Timesheet.date < until_day)
-        .order_by(Timesheet.date)
-        .all()
-    )
+def get_range(
+    from_day: Optional[datetime.date] = None,
+    until_day: Optional[datetime.date] = None,
+    missing_okay: bool = True,
+) -> List[Timesheet]:
+    query = db.session.query(Timesheet)
+    if from_day and until_day:
+        query = query.filter(Timesheet.date >= from_day, Timesheet.date < until_day)
+    elif from_day:
+        query = query.filter(Timesheet.date >= from_day)
+    elif until_day:
+        query = query.filter(Timesheet.date < until_day)
+
+    logs = query.all()
     if len(logs) == 0 and not missing_okay:
         raise RuntimeError(
             f"No timesheet entries found from {from_day} until {until_day}"
@@ -370,17 +432,17 @@ def get_range(from_day, until_day, missing_okay=True):
     return logs
 
 
-def row_exists(idx):
+def row_exists(idx: datetime.date) -> bool:
     return bool(get_day(idx))
 
 
 def add_row(
-    day,
-    clock_in=None,
-    clock_out=None,
-    is_flex=False,
-):
-    if not any([clock_in, clock_out]):
+    day: datetime.date,
+    clock_in: Optional[datetime.time] = None,
+    clock_out: Optional[datetime.time] = None,
+    is_flex: bool = False,
+) -> Timesheet:
+    if clock_in is None and clock_out is None:
         raise ValueError(
             "You must specify at least one time to create a new timesheet entry"
         )
@@ -404,11 +466,11 @@ def add_row(
 
 
 def update_row(
-    day,
-    clock_in=None,
-    clock_out=None,
-    overwrite=False,
-):
+    day: datetime.date,
+    clock_in: Optional[datetime.time] = None,
+    clock_out: Optional[datetime.time] = None,
+    overwrite: bool = False,
+) -> Timesheet:
     row = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
 
     bail = list()

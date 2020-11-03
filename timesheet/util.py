@@ -1,13 +1,34 @@
+import click
 import datetime
 import sys
-from collections import namedtuple
 from functools import wraps
+from pathlib import Path
+from typing import (
+    Any,
+    Callable,
+    NamedTuple,
+    Optional,
+    Union,
+    overload,
+)
 
-from .constants import VALID_TARGETS, YESTERDAY, TOMORROW, TODAY, MONTHS
+from click.exceptions import BadParameter, ClickException
+
+from .constants import (
+    TargetDay,
+    TargetPeriod,
+    ConfigFormat,
+    LogType,
+    YESTERDAY,
+    TOMORROW,
+    TODAY,
+    Month,
+)
+from .db import DB
 
 
-def ensure_db(db):
-    def decorator(func):
+def ensure_db(db: DB) -> Callable:
+    def decorator(func: Callable) -> Callable:
         @wraps(func)
         def inner(*args, **kwargs):
             db._validate_conn()
@@ -19,7 +40,7 @@ def ensure_db(db):
     return decorator
 
 
-def log_date(log_line):
+def log_date(log_line: str) -> datetime.datetime:
     (month, day, clock, _) = log_line.split(None, 3)
     try:
         dt = datetime.datetime.strptime(
@@ -35,24 +56,27 @@ def log_date(log_line):
     return dt
 
 
-def target2dt(target):
-    if target in VALID_TARGETS[:2]:
-        return (TODAY if target == "today" else YESTERDAY, None)
-    elif target == "all":
+def target2dt(
+    target: Union[TargetPeriod, TargetDay],
+) -> tuple[Optional[datetime.date], Optional[datetime.date]]:
+    if target in TargetDay:
+        min_date = TODAY if target == "today" else YESTERDAY
+        max_date = min_date + datetime.timedelta(days=1)
+        return (min_date, max_date)
+    elif target == TargetPeriod.all:
         return (None, None)
     else:
-        if target == "month":
+        if target.value == "month":
             min_date = TODAY.replace(day=1)
             max_date = TOMORROW
             return (min_date, max_date)
-        elif target == "lastmonth":
+        elif target.value == "lastmonth":
             min_date = (TODAY.replace(day=1) - datetime.timedelta(days=1)).replace(
                 day=1
             )
-        elif target in MONTHS:
-            min_date = TODAY.replace(month=MONTHS[target], day=1)
         else:
-            raise ValueError(f"Invalid target received: {target}")
+            target_month = Month[target.value]
+            min_date = TODAY.replace(month=target_month.value, day=1)
         max_date = (
             min_date.replace(month=min_date.month + 1)
             if min_date.month < 12
@@ -61,10 +85,10 @@ def target2dt(target):
         return (min_date, max_date)
 
 
-def str_in_list(str_list, norm="lower"):
+def str_in_list(str_list: list[str], norm: str = "lower") -> Callable:
     """returns a function that accepts a string and confirms that it is in the given list"""
 
-    def inner(ctx, param, value):
+    def inner(ctx: click.Context, param: click.Parameter, value: Any):
         normed = getattr(value, norm)() if norm else value
         if normed in str_list:
             return normed
@@ -75,7 +99,31 @@ def str_in_list(str_list, norm="lower"):
     return inner
 
 
-def validate_datetime(ctx, param, dt):
+def str2enum(
+    ctx: click.Context, param: click.Parameter, value: str
+) -> Union[LogType, TargetDay, TargetPeriod]:
+    if param.name == "log_type":
+        try:
+            new_enum = LogType(f"clock_{value}")
+        except AttributeError as e:
+            raise click.BadParameter(
+                f"Invalid option for {param.name}. Must be one of: {', '.join([c.name.lower() for c in LogType])}"
+            )
+        return new_enum
+    elif param.name == "target":
+        if value in [t.value for t in TargetDay]:
+            return TargetDay(value)
+        elif value in [t.value for t in TargetPeriod]:
+            return TargetPeriod(value)
+        else:
+            raise BadParameter(f"Invalid {param.name} received: {value}")
+    else:
+        raise ClickException(f"Unhandled parameter received: {param.name}")
+
+
+def validate_datetime(
+    ctx: click.Context, param: click.Parameter, dt: datetime.datetime
+) -> datetime.datetime:
     # replace default date on time string parse with today's date
     if isinstance(dt, datetime.datetime) and dt.date() == datetime.date(1900, 1, 1):
         dt = dt.replace(year=TODAY.year, month=TODAY.month, day=TODAY.day)
@@ -83,29 +131,32 @@ def validate_datetime(ctx, param, dt):
     return clean_time(dt.replace(second=0, microsecond=0))
 
 
+@overload
+def clean_time(dt_obj: datetime.datetime) -> datetime.datetime:
+    ...
+
+
+@overload
+def clean_time(dt_obj: datetime.time) -> datetime.time:
+    ...
+
+
 def clean_time(dt_obj):
     "strips out seconds and partial seconds"
     return dt_obj.replace(second=0, microsecond=0)
 
 
-def round_time(dt_obj):
+def round_time(dt_obj: datetime.time) -> datetime.time:
     raise NotImplemented
 
 
-Log = namedtuple(
-    "Log",
-    (
-        "day",
-        "type",
-        "time",
-    ),
-)
+class Log(NamedTuple):
+    day: datetime.date
+    type: LogType
+    time: datetime.time
 
-AuthLog = namedtuple(
-    "AuthLog",
-    (
-        "file",
-        "min_date",
-        "max_date",
-    ),
-)
+
+class AuthLog(NamedTuple):
+    file: Path
+    min_date: datetime.date
+    max_date: datetime.date

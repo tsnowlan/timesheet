@@ -1,5 +1,7 @@
 from sqlalchemy import Boolean, Column, Date, Time
 
+from timesheet.constants import LogType
+
 from .db import Base
 from .util import Log
 
@@ -18,5 +20,5 @@ class Timesheet(Base):
     def __str__(self) -> str:
         return f"{self.date}\t{self.clock_in}\t{self.clock_out}"
 
-    def log(self, log_type) -> Log:
-        return Log(self.date, log_type, getattr(self, f"clock_{log_type}", None))
+    def log(self, log_type: LogType) -> Log:
+        return Log(self.date, log_type, getattr(self, log_type.value, None))

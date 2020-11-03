@@ -1,33 +1,44 @@
 import datetime
+from pathlib import Path
 import sys
+from typing import Optional
 
 import click
+from click.decorators import pass_context
+from timesheet.exceptions import ExistingData, NoData
 
 from .app import (
     add_log,
     backfill_days,
+    config as app_config,
     db,
     edit_log,
     guess_day,
-    print_all,
-    print_day,
     print_range,
+    update_row,
 )
 from .constants import (
     DATETIME_FORMATS,
     DEF_DBFILE,
+    LogType,
+    AllTargets,
+    AllTargetsType,
+    Month,
     ROW_HEADER,
     TODAY,
-    VALID_LOG_TYPES,
-    VALID_TARGETS,
 )
-from .util import str_in_list, target2dt, validate_datetime
+from .util import target2dt, validate_datetime, str2enum
 
 
 @click.command(help="clock in and out")
-@click.argument(
-    "log_type", metavar="< in | out >", callback=str_in_list(VALID_LOG_TYPES)
+@click.option(
+    "-c",
+    "--config-file",
+    type=click.Path(dir_okay=False),
+    envvar="TIMESHEET_CONFIG",
+    hidden=True,
 )
+@click.argument("log_type", metavar="< in | out >", callback=str2enum)
 @click.argument(
     "log_time",
     metavar="[TIME_STRING]",
@@ -41,16 +52,31 @@ from .util import str_in_list, target2dt, validate_datetime
     "-d",
     "--db-file",
     type=click.Path(dir_okay=False, writable=True),
-    default=DEF_DBFILE,
+    hidden=True,
 )
-def clock(log_type, log_time, guess, overwrite, db_file):
-    db.connect(db_file)
-    if guess:
-        guess_args = [log_type == x for x in VALID_LOG_TYPES] + [overwrite]
-        new_log = guess_day(log_time.date(), *guess_args)
-    else:
-        new_log = add_log(log_time.date(), log_type, log_time.time())
-    print(f"Successfully clocked {log_type} on {new_log.day} at {new_log.time}")
+def clock(
+    log_type: LogType,
+    log_time: datetime.datetime,
+    guess: bool,
+    overwrite: bool,
+    config_file: Optional[Path],
+    db_file: Optional[Path],
+) -> None:
+    update_config(config_file, db_file)
+
+    db.connect(app_config.db_file)
+    try:
+        if guess:
+            guess_args = [log_type == lt for lt in LogType] + [overwrite]
+            new_log = guess_day(log_time.date(), *guess_args).log(log_type)
+        else:
+            new_log = add_log(log_time.date(), log_type, log_time.time())
+    except (ExistingData, NoData) as e:
+        print(e)
+        sys.exit(1)
+    print(
+        f"Successfully clocked {log_type.name.lower()} on {new_log.day} at {new_log.time}"
+    )
 
 
 @click.command(help="print out timesheet entries for the given date(s)")
@@ -58,24 +84,24 @@ def clock(log_type, log_time, guess, overwrite, db_file):
     "target",
     metavar="< today | month | $month_name | ... >",
     default="today",
-    callback=str_in_list(VALID_TARGETS),
+    callback=str2enum,
 )
 @click.option(
     "--export", is_flag=True, help=f"print in a form easy to paste into the timesheet"
 )
 @click.pass_context
-def print_logs(ctx, target, export):
+def print_logs(ctx: click.Context, target: AllTargetsType, export: bool) -> None:
     print_format = "export" if export else "print"
     min_date, max_date = target2dt(target)
-    if min_date and max_date:
+    try:
         print_range(min_date, max_date, print_format)
-    elif min_date:
-        print_day(min_date)
-    else:
-        print_all()
+    except NoData as e:
+        print(e)
+        sys.exit(1)
 
 
-@click.group(help="edit an existing log")
+@click.command(help="edit an existing log")
+@click.argument("log_type", metavar="< in | out >", callback=str2enum)
 @click.argument(
     "log_time",
     metavar="[TIME_STRING]",
@@ -83,15 +109,13 @@ def print_logs(ctx, target, export):
     type=click.DateTime(DATETIME_FORMATS),
     callback=validate_datetime,
 )
-@click.option(
-    "-i", "--clock-in", "log_type", flag_value="in", help="edit the clock in time"
-)
-@click.option(
-    "-o", "--out", "log_type", flag_value="out", help="edit the clock out time"
-)
 @click.pass_context
-def edit(ctx, log_time, log_type):
-    new_log = edit_log(log_time.day(), log_type, log_time.time())
+def edit(ctx: click.Context, log_type: LogType, log_time: datetime.datetime) -> None:
+    try:
+        new_log = edit_log(log_time.date(), log_type, log_time.time())
+    except NoData as e:
+        print(e)
+        sys.exit(1)
     print(f"Updated timesheet entry:\n{ROW_HEADER}")
     print(new_log)
 
@@ -101,7 +125,7 @@ def edit(ctx, log_time, log_type):
     "target",
     metavar="< today | month | $month_name | ... >",
     default="today",
-    callback=str_in_list(VALID_TARGETS),
+    callback=str2enum,
 )
 @click.option(
     "-v",
@@ -116,14 +140,17 @@ def edit(ctx, log_time, log_type):
     help="overwrite existing entries without prompting",
 )
 @click.pass_context
-def backfill(ctx, target, validate, overwrite):
+def backfill(
+    ctx: click.Context, target: AllTargetsType, validate: bool, overwrite: bool
+) -> None:
     f"""
     Backfills timesheet days in the given period from system logs
 
-    Valid arguments: {', '.join(VALID_TARGETS)}
+    Valid arguments: {', '.join(AllTargets)}
     """
     # TODO: option to fill days outside of log range with "standard" time
     print(f"got target={target}, validate={validate}, overwrite={overwrite}")
+
     min_date, max_date = target2dt(target)
     if min_date and not max_date:
         max_date = min_date + datetime.timedelta(days=1)
@@ -149,12 +176,33 @@ def backfill(ctx, target, validate, overwrite):
     type=click.Path(dir_okay=False, writable=True),
     default=DEF_DBFILE,
 )
+@click.option(
+    "-c",
+    "--config-file",
+    type=click.Path(dir_okay=False),
+    envvar="TIMESHEET_CONFIG",
+    help="File with custom config settings",
+)
 @click.option("--debug", is_flag=True)
 @click.pass_context
-def run_cli(ctx, db_file, debug):
-    ctx.ensure_object(dict)
-    ctx.obj["debug"] = debug
-    db.connect(db_file, debug)
+def run_cli(
+    ctx: click.Context,
+    db_file: Optional[Path],
+    config_file: Optional[Path],
+    debug: bool,
+) -> None:
+    update_config(config_file, db_file)
+    db.connect(app_config.db_file, debug)
+
+
+def update_config(
+    config_file: Optional[Path] = None, db_file: Optional[Path] = None
+) -> None:
+    """ Updates config from cli options """
+    if config_file:
+        app_config.from_file(config_file)
+    if db_file:
+        app_config.update(db_file=db_file)
 
 
 ####
@@ -165,5 +213,5 @@ run_cli.add_command(edit)
 run_cli.add_command(backfill)
 
 
-def main():
+def main() -> None:
     run_cli(obj={})

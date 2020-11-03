@@ -20,7 +20,6 @@ from .constants import (
 from .db import DB
 from .exceptions import ExistingData, NoData
 from .models import Timesheet
-from .types import RowInfo
 from .util import AuthLog, Log, clean_time, ensure_db, log_date, round_time
 
 # exported objects

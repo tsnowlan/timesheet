@@ -1,11 +1,9 @@
 import datetime
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Optional
 
 import click
-from click.decorators import pass_context
-from timesheet.exceptions import ExistingData, NoData
 
 from .app import (
     add_log,
@@ -15,19 +13,11 @@ from .app import (
     edit_log,
     guess_day,
     print_range,
-    update_row,
 )
-from .constants import (
-    DATETIME_FORMATS,
-    DEF_DBFILE,
-    LogType,
-    AllTargets,
-    AllTargetsType,
-    Month,
-    ROW_HEADER,
-    TODAY,
-)
-from .util import target2dt, validate_datetime, str2enum
+from .constants import DATETIME_FORMATS, ROW_HEADER, TODAY
+from .enums import AllTargets, AllTargetsType, LogType
+from .exceptions import ExistingData, NoData
+from .util import str2enum, target2dt, validate_datetime
 
 
 @click.command(help="clock in and out")
@@ -89,8 +79,7 @@ def clock(
 @click.option(
     "--export", is_flag=True, help=f"print in a form easy to paste into the timesheet"
 )
-@click.pass_context
-def print_logs(ctx: click.Context, target: AllTargetsType, export: bool) -> None:
+def print_logs(target: AllTargetsType, export: bool) -> None:
     print_format = "export" if export else "print"
     min_date, max_date = target2dt(target)
     try:
@@ -109,8 +98,7 @@ def print_logs(ctx: click.Context, target: AllTargetsType, export: bool) -> None
     type=click.DateTime(DATETIME_FORMATS),
     callback=validate_datetime,
 )
-@click.pass_context
-def edit(ctx: click.Context, log_type: LogType, log_time: datetime.datetime) -> None:
+def edit(log_type: LogType, log_time: datetime.datetime) -> None:
     try:
         new_log = edit_log(log_time.date(), log_type, log_time.time())
     except NoData as e:
@@ -139,10 +127,7 @@ def edit(ctx: click.Context, log_type: LogType, log_time: datetime.datetime) -> 
     is_flag=True,
     help="overwrite existing entries without prompting",
 )
-@click.pass_context
-def backfill(
-    ctx: click.Context, target: AllTargetsType, validate: bool, overwrite: bool
-) -> None:
+def backfill(target: AllTargetsType, validate: bool, overwrite: bool) -> None:
     f"""
     Backfills timesheet days in the given period from system logs
 
@@ -157,7 +142,7 @@ def backfill(
     elif not min_date and not max_date:  # and ctx.obj["debug"]:
         print(f"Backfilling as far as the logs will let us...", file=sys.stderr)
     new_logs = backfill_days(
-        min_date, max_date, any([validate, ctx.obj["debug"]]), overwrite
+        min_date, max_date, any([validate, app_config.debug]), overwrite
     )
     if new_logs:
         print(f"Created or updated {len(new_logs)} timesheet entries:")
@@ -174,7 +159,6 @@ def backfill(
     "-d",
     "--db-file",
     type=click.Path(dir_okay=False, writable=True),
-    default=DEF_DBFILE,
 )
 @click.option(
     "-c",
@@ -184,9 +168,7 @@ def backfill(
     help="File with custom config settings",
 )
 @click.option("--debug", is_flag=True)
-@click.pass_context
 def run_cli(
-    ctx: click.Context,
     db_file: Optional[Path],
     config_file: Optional[Path],
     debug: bool,
@@ -201,7 +183,7 @@ def update_config(
     """ Updates config from cli options """
     if config_file:
         app_config.from_file(config_file)
-    if db_file:
+    if db_file and db_file != app_config.db_file:
         app_config.update(db_file=db_file)
 
 

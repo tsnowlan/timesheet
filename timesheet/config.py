@@ -1,19 +1,19 @@
 import datetime
-from pathlib import Path
 import sys
-from typing import MutableMapping, Optional, Dict, Any, Literal, Tuple
+from pathlib import Path
+from typing import Optional
 
-from .constants import VALID_CONFIG_FORMATS, DEF_DBFILE
+from .enums import ConfigFormat
 
 
-class Config(object):
-    default_start: datetime.time = datetime.time(9, 0)
-    default_quit: datetime.time = datetime.time(16, 30)
+DEF_DBFILE = Path().home() / "timesheet2.db"
+
+
+class Config:
+    normal_start: datetime.time = datetime.time(9, 0)
+    normal_quit: datetime.time = datetime.time(16, 30)
     round_interval: int = 15
-    round_thresholds: Dict[Literal["in", "out"], Tuple[int, int]] = {
-        "in": (8, 8),
-        "out": (7, 8),
-    }
+    round_threshold: int = round_interval // 2
     db_file: Path = DEF_DBFILE
     debug: bool = False
 
@@ -36,21 +36,19 @@ class Config(object):
                 )
                 return
 
-        if config_file.suffix not in VALID_CONFIG_FORMATS:
+        try:
+            format = ConfigFormat[config_file.suffix]
+        except KeyError:
             raise ValueError(
-                f"Unrecognized config format {config_file}. Must be one of: {', '.join(VALID_CONFIG_FORMATS.keys())}"
+                f"Unrecognized config format {config_file}. Must be one of: {', '.join([f.value for f in ConfigFormat])}"
             )
 
-        if VALID_CONFIG_FORMATS[config_file.suffix] == "json":
-            config = self._from_json(config_file)
-        elif VALID_CONFIG_FORMATS[config_file.suffix] == "yaml":
-            config = self._from_yaml(config_file)
-        elif VALID_CONFIG_FORMATS[config_file.suffix] == "toml":
-            config = self._from_toml(config_file)
+        if format.value == "json":
+            self._from_json(config_file)
+        elif format.value == "yaml":
+            self._from_yaml(config_file)
         else:
-            raise ValueError(f"Cannot parse config file: {config_file}")
-
-        self.update(**config)
+            self._from_toml(config_file)
 
     def update(self, strict: bool = False, **kwargs) -> None:
         for k, v in kwargs.items():
@@ -63,17 +61,17 @@ class Config(object):
                 else:
                     print(f"WARNING: {err}. Skipping...", file=sys.stderr)
 
-    def _from_json(cls, config_file: Path) -> Dict[str, Any]:
+    def _from_json(self, config_file: Path) -> None:
         import json
 
-        return json.loads(config_file.read_text())
+        self.update(**json.loads(config_file.read_text()))
 
-    def _from_yaml(self, config_file: Path) -> Dict[str, Any]:
+    def _from_yaml(self, config_file: Path) -> None:
         try:
             import yaml
         except ModuleNotFoundError:
             print(
-                f"Could not import yaml to parse config f{config_file}. Use a different format or make sure PyYAML is installed correctly"
+                f"Could not import yaml to parse config {config_file}. Use a different format or make sure PyYAML is installed correctly"
             )
             sys.exit(1)
         try:
@@ -82,17 +80,18 @@ class Config(object):
         except ImportError:
             from yaml import SafeLoader  # type: ignore
 
-        return yaml.load(config_file.read_text(), Loader=SafeLoader)
+        self.update(**yaml.load(config_file.read_text(), Loader=SafeLoader))
 
-    def _from_toml(self, config_file: Path) -> Dict[str, Any]:
+    def _from_toml(self, config_file: Path) -> None:
         try:
             import toml
         except ModuleNotFoundError:
             print(
-                f"Could not load toml to parse config f{config_file}. Use a different format or make sure toml is installed correctly"
+                f"Could not load toml to parse config {config_file}. Use a different format or make sure toml is installed correctly"
             )
             sys.exit(1)
-        return toml.loads(config_file.read_text())  # type: ignore
+
+        self.update(**toml.loads(config_file.read_text()))
 
     def __iter__(self):
         for k in self.__annotations__:

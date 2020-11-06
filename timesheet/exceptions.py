@@ -1,7 +1,8 @@
 import datetime
-from .models import Timesheet
-from typing import Optional, Tuple, Union
 from pathlib import Path
+from typing import Optional, Tuple, Union
+
+from .models import Timesheet
 
 
 class NoData(Exception):

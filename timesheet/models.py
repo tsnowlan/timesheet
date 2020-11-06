@@ -1,8 +1,7 @@
 from sqlalchemy import Boolean, Column, Date, Time
 
-from timesheet.constants import LogType
-
 from .db import Base
+from .enums import LogType
 from .util import Log
 
 

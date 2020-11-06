@@ -6,21 +6,23 @@ from pathlib import Path
 from typing import DefaultDict, Dict, Iterable, List, Literal, Optional, Tuple
 
 import sqlalchemy.exc
-from sqlalchemy.sql.sqltypes import Time
 
 from .config import Config
-from .constants import (
-    LogType,
-    LOGIN_STRS,
-    LOGOUT_STRS,
-    ROW_HEADER,
-    TODAY,
-    TOMORROW,
-)
+from .constants import ROW_HEADER, TODAY, TOMORROW
 from .db import DB
+from .enums import LogType
 from .exceptions import ExistingData, NoData
 from .models import Timesheet
-from .util import AuthLog, Log, clean_time, ensure_db, log_date, round_time
+from .util import AuthLog, Log, clean_time, ensure_db, log_date
+
+# log parsing
+LOGIN_STRS = (
+    "Lid opened",
+    "Operation 'sleep' finished",
+    "unlocked login keyring",
+    "gnome-keyring-daemon started properly and unlocked keyring",
+)
+LOGOUT_STRS = ("Lid closed", "System is powering down")
 
 # exported objects
 db: DB = DB()

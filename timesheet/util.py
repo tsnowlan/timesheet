@@ -1,30 +1,15 @@
-import click
 import datetime
 import sys
 from functools import wraps
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    NamedTuple,
-    Optional,
-    Union,
-    overload,
-)
+from typing import Any, Callable, NamedTuple, Optional, Union, overload
 
-from click.exceptions import BadParameter, ClickException
+import click
+from click.exceptions import BadParameter
 
-from .constants import (
-    TargetDay,
-    TargetPeriod,
-    ConfigFormat,
-    LogType,
-    YESTERDAY,
-    TOMORROW,
-    TODAY,
-    Month,
-)
+from .constants import TODAY, TOMORROW, YESTERDAY
 from .db import DB
+from .enums import AllTargets, LogType, Month, TargetDay, TargetPeriod
 
 
 def ensure_db(db: DB) -> Callable:
@@ -85,40 +70,27 @@ def target2dt(
         return (min_date, max_date)
 
 
-def str_in_list(str_list: list[str], norm: str = "lower") -> Callable:
-    """returns a function that accepts a string and confirms that it is in the given list"""
-
-    def inner(ctx: click.Context, param: click.Parameter, value: Any):
-        normed = getattr(value, norm)() if norm else value
-        if normed in str_list:
-            return normed
-        raise ValueError(
-            f"Invalid {ctx.info_name} value: {value}. Must be one of: {', '.join(str_list)}"
-        )
-
-    return inner
-
-
 def str2enum(
     ctx: click.Context, param: click.Parameter, value: str
 ) -> Union[LogType, TargetDay, TargetPeriod]:
     if param.name == "log_type":
         try:
             new_enum = LogType(f"clock_{value}")
-        except AttributeError as e:
+        except AttributeError:
             raise click.BadParameter(
                 f"Invalid option for {param.name}. Must be one of: {', '.join([c.name.lower() for c in LogType])}"
             )
         return new_enum
-    elif param.name == "target":
-        if value in [t.value for t in TargetDay]:
-            return TargetDay(value)
-        elif value in [t.value for t in TargetPeriod]:
-            return TargetPeriod(value)
-        else:
-            raise BadParameter(f"Invalid {param.name} received: {value}")
     else:
-        raise ClickException(f"Unhandled parameter received: {param.name}")
+        for enum_type in [TargetDay, TargetPeriod]:
+            try:
+                new_enum = enum_type[value]
+            except KeyError:
+                continue
+            return new_enum
+        raise BadParameter(
+            f"Invalid option for {param.name}. Must be one of: {', '.join(AllTargets)}"
+        )
 
 
 def validate_datetime(
@@ -146,8 +118,21 @@ def clean_time(dt_obj):
     return dt_obj.replace(second=0, microsecond=0)
 
 
-def round_time(dt_obj: datetime.time) -> datetime.time:
-    raise NotImplemented
+def round_time(
+    time_obj: datetime.time, thresh: int, to_nearest: int = 15
+) -> datetime.time:
+    mod = time_obj.minute % to_nearest
+    if mod == 0:
+        return time_obj
+
+    if mod <= thresh:
+        rounded_time = datetime.timedelta(minutes=-mod)
+    else:
+        rounded_time = datetime.timedelta(minutes=to_nearest - mod)
+
+    # throwaway dt object so we can use timedeltas for cleaner time math
+    temp_dt = datetime.datetime.combine(TODAY, time_obj) + rounded_time
+    return temp_dt.time()
 
 
 class Log(NamedTuple):

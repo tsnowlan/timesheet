@@ -30,13 +30,6 @@ config: Config = Config()
 
 # exported functions
 @ensure_db(db)
-def print_day(day: datetime.date) -> None:
-    day_log = get_day(day, False)
-    print(ROW_HEADER)
-    print(day_log)
-
-
-@ensure_db(db)
 def print_range(
     from_day: Optional[datetime.date],
     until_day: Optional[datetime.date],

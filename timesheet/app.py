@@ -13,7 +13,7 @@ from .db import DB
 from .enums import LogType
 from .exceptions import ExistingData, NoData
 from .models import Timesheet
-from .util import AuthLog, Log, clean_time, ensure_db, log_date
+from .util import AuthLog, Log, clean_time, ensure_db, log_date, round_time
 
 # log parsing
 LOGIN_STRS = (
@@ -76,14 +76,18 @@ def print_range(
             else:
                 print(f"{curr_day}\t{default_time : <8}\t{default_time : <8}")
             curr_day += datetime.timedelta(days=1)
-    elif print_format == "export":
+    else:
         for log_type in LogType:
             print(f"{log_type.value.upper()}")
             print("=" * 10)
             curr_day = from_day
             while curr_day < until_day:
                 if curr_day in logs_by_day:
-                    print(logs_by_day[curr_day].log(log_type).time)
+                    rounded = round_time(
+                        logs_by_day[curr_day].log(log_type).time,
+                        config.round_threshold,
+                    )
+                    print(f"{rounded.hour:02}:{rounded.minute:02}")
                 elif curr_day.weekday() > 4:
                     print()
                 else:
@@ -91,9 +95,6 @@ def print_range(
 
                 curr_day += datetime.timedelta(days=1)
             print()
-
-    else:
-        raise ValueError("Specify either 'print' or 'export' format")
 
 
 @ensure_db(db)

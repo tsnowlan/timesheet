@@ -140,3 +140,4 @@ cython_debug/
 # repo custom
 .vscode
 migrations/
+*.db

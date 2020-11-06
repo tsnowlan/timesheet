@@ -61,7 +61,7 @@ def print_range(
 
     if from_day is None:
         from_day = sorted(logs_by_day.keys())[0]
-    if until_day is None:
+    if until_day is None or until_day > TOMORROW:
         until_day = TOMORROW
 
     if print_format == "print":

@@ -6,7 +6,7 @@ from typing import Optional
 from .enums import ConfigFormat
 
 
-DEF_DBFILE = Path().home() / "timesheet2.db"
+DEF_DBFILE = Path().home() / "timesheet.db"
 
 
 class Config:

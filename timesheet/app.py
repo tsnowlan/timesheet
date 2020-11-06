@@ -91,17 +91,6 @@ def print_range(
 
 
 @ensure_db(db)
-def print_all() -> None:
-    last_row = None
-    print(ROW_HEADER)
-    for row in db.session.query(Timesheet).order_by(Timesheet.date):
-        if last_row and last_row.date.month != row.date.month:
-            print()
-        print(row)
-        last_row = row
-
-
-@ensure_db(db)
 def add_log(log_day: datetime.date, log_type: LogType, log_time: datetime.time) -> Log:
     log_data = {
         "day": log_day,

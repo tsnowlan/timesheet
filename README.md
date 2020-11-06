@@ -6,11 +6,13 @@ Records start / stop working times
 -   Guess can work on in or out of a single day, or backfill all missing days
 -   Basic overwrite / interactive validation when modifying a day with existing logs
 -   Can print out easy to red logs for individual or a range of days
--   `--export` prints a month out for easy pasting into my timesheet
+-   `print --export` gives times rounded to the nearest 15min for easy pasting into actual timesheet
 
 TODO:
 
 -   Allow using a "standard" day for regular working hours
 -   Show current flex time balance
--   Log in flex time used, so balance reflects reality
--   Mark days for PTO, sick, public holidays
+-   Log flex time used, so balance reflects reality
+-   Mark days as PTO, sick, public holidays
+-   Tests
+-   Write logs directly to excel timesheet?

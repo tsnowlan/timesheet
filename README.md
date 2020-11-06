@@ -16,3 +16,4 @@ TODO:
 -   Mark days as PTO, sick, public holidays
 -   Tests
 -   Write logs directly to excel timesheet?
+-   switch to logging instead of plain prints

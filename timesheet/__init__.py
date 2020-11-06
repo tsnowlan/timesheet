@@ -53,8 +53,8 @@ def clock(
     db_file: Optional[Path],
 ) -> None:
     update_config(config_file, db_file)
+    db.connect(app_config.db_file, app_config.debug)
 
-    db.connect(app_config.db_file)
     try:
         if guess:
             guess_args = [log_type == lt for lt in LogType] + [overwrite]
@@ -139,7 +139,7 @@ def backfill(target: AllTargetsType, validate: bool, overwrite: bool) -> None:
     min_date, max_date = target2dt(target)
     if min_date and not max_date:
         max_date = min_date + datetime.timedelta(days=1)
-    elif not min_date and not max_date:  # and ctx.obj["debug"]:
+    elif not min_date and not max_date:
         print(f"Backfilling as far as the logs will let us...", file=sys.stderr)
     new_logs = backfill_days(
         min_date, max_date, any([validate, app_config.debug]), overwrite
@@ -173,18 +173,22 @@ def run_cli(
     config_file: Optional[Path],
     debug: bool,
 ) -> None:
-    update_config(config_file, db_file)
-    db.connect(app_config.db_file, debug)
+    update_config(config_file, db_file, debug)
+    db.connect(app_config.db_file, app_config.debug)
 
 
 def update_config(
-    config_file: Optional[Path] = None, db_file: Optional[Path] = None
+    config_file: Optional[Path] = None,
+    db_file: Optional[Path] = None,
+    debug: bool = False,
 ) -> None:
     """ Updates config from cli options """
     if config_file:
         app_config.from_file(config_file)
     if db_file and db_file != app_config.db_file:
-        app_config.update(db_file=db_file)
+        app_config.db_file = db_file
+    if debug:
+        app_config.debug = debug
 
 
 ####

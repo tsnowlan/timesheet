@@ -17,23 +17,23 @@ class NamedEnum(str, Enum):
 class ConfigFormat(NamedEnum):
     json = auto()
     yaml = auto()
-    yml = "yaml"
+    yml = yaml
     toml = auto()
 
 
 class Month(IntEnum):
-    january = 1
-    february = 2
-    march = 3
-    april = 4
-    may = 5
-    june = 6
-    july = 7
-    august = 8
-    september = 9
-    october = 10
-    november = 11
-    december = 12
+    january = auto()
+    february = auto()
+    march = auto()
+    april = auto()
+    may = auto()
+    june = auto()
+    july = auto()
+    august = auto()
+    september = auto()
+    october = auto()
+    november = auto()
+    december = auto()
 
 
 # import calendar
@@ -60,7 +60,7 @@ class TargetPeriod(NamedEnum):
     month = auto()
     lastmonth = auto()
     january = auto()
-    jan = "january"
+    jan = january
     february = auto()
     feb = february
     march = auto()

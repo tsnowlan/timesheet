@@ -97,7 +97,7 @@ def validate_datetime(
     ctx: click.Context, param: click.Parameter, dt: datetime.datetime
 ) -> datetime.datetime:
     # replace default date on time string parse with today's date
-    if isinstance(dt, datetime.datetime) and dt.date() == datetime.date(1900, 1, 1):
+    if dt.date() == datetime.date(1900, 1, 1):
         dt = dt.replace(year=TODAY.year, month=TODAY.month, day=TODAY.day)
     # strip seconds
     return clean_time(dt.replace(second=0, microsecond=0))
@@ -110,10 +110,6 @@ def clean_time(dt_obj: datetime.datetime) -> datetime.datetime:
 
 @overload
 def clean_time(dt_obj: datetime.time) -> datetime.time:
-    ...
-
-
-def clean_time(dt_obj):
     "strips out seconds and partial seconds"
     return dt_obj.replace(second=0, microsecond=0)
 

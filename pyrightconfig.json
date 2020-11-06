@@ -1,0 +1,6 @@
+{
+    "exclude": ["**/node_modules", "**/__pycache__", ".git", "migrations"],
+    "pythonVersion": "3.9",
+    "pythonPlatform": "Linux",
+    "verboseOutput": true
+}

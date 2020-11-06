@@ -13,4 +13,4 @@ DATE_FORMATS = ["%Y-%m-%d"]
 for tf in TIME_FORMATS:
     DATE_FORMATS.append(f"{DATE_FORMATS[0]} {tf}")
 DATETIME_FORMATS = TIME_FORMATS + DATE_FORMATS
-ROW_HEADER = f"{'date': <8}\t{'Clock In': <8}\t{'Clock Out': <8}"
+ROW_HEADER = f"{'Date': <8}\t{'Clock In': <8}\t{'Clock Out': <8}"

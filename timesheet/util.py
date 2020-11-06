@@ -84,7 +84,7 @@ def str2enum(
     else:
         for enum_type in [TargetDay, TargetPeriod]:
             try:
-                new_enum = enum_type[value]
+                new_enum = enum_type[value.lower()]
             except KeyError:
                 continue
             return new_enum

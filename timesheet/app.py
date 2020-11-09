@@ -75,7 +75,7 @@ def print_range(
                         logs_by_day[curr_day].log(log_type).time,
                         config.round_threshold,
                     )
-                    print(f"{rounded.hour:02}:{rounded.minute:02}")
+                    print(f"{rounded.hour:02}\t{rounded.minute:02}")
                 elif curr_day.weekday() > 4:
                     print()
                 else:

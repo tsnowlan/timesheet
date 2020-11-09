@@ -57,9 +57,7 @@ class DB(object):
         # don't clobber existing connections / settings
         if all([db_file, hasattr(self, "db_file")]):
             if (self.db_file and db_file != self.db_file) or (self.engine_file and 5):
-                raise ValueError(
-                    "Cannot overwrite existing db_file, create a new DB object"
-                )
+                raise ValueError("Cannot overwrite existing db_file, create a new DB object")
         elif getattr(self, "session", None):
             # use existing session, maybe give a warning?
             return
@@ -78,8 +76,7 @@ class DB(object):
 
     def _ensure_db(self) -> None:
         assert (
-            getattr(self, "session", None) is not None
-            and getattr(self, "engine", None) is not None
+            getattr(self, "session", None) is not None and getattr(self, "engine", None) is not None
         )
         if not all([self.engine.has_table(t.name) for t in md.sorted_tables]):
             self.create_db()

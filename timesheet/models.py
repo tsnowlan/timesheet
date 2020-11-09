@@ -9,8 +9,8 @@ class Timesheet(Base):
     __tablename__ = "timesheet"
 
     date = Column(Date, primary_key=True, unique=True, index=True)
-    clock_in = Column(Time)
-    clock_out = Column(Time)
+    clock_in = Column(Time, nullable=True)
+    clock_out = Column(Time, nullable=True)
     is_flex = Column(Boolean, default=False)
 
     def __repr__(self) -> str:

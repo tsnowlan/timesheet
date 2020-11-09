@@ -2,7 +2,7 @@ import datetime
 import sys
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, NamedTuple, Optional, Union, overload
+from typing import Callable, Iterable, NamedTuple, Optional, Union, overload
 
 import click
 from click.exceptions import BadParameter
@@ -10,6 +10,30 @@ from click.exceptions import BadParameter
 from .constants import TODAY, TOMORROW, YESTERDAY
 from .db import DB
 from .enums import AllTargets, LogType, Month, TargetDay, TargetPeriod
+
+
+@overload
+def clean_time(dt_obj: datetime.datetime) -> datetime.datetime:
+    ...
+
+
+@overload
+def clean_time(dt_obj: datetime.time) -> datetime.time:
+    ...
+
+
+def clean_time(dt_obj):
+    "strips out seconds and partial seconds"
+    return dt_obj.replace(second=0, microsecond=0)
+
+
+def date_range(
+    start: datetime.date, end: datetime.date, skip_weekends: bool = True
+) -> Iterable[datetime.date]:
+    while start < end:
+        if start.weekday() < 5 or not skip_weekends:
+            yield start
+        start += datetime.timedelta(days=1)
 
 
 def ensure_db(db: DB) -> Callable:
@@ -41,33 +65,19 @@ def log_date(log_line: str) -> datetime.datetime:
     return dt
 
 
-def target2dt(
-    target: Union[TargetPeriod, TargetDay],
-) -> tuple[Optional[datetime.date], Optional[datetime.date]]:
-    if target in TargetDay:
-        min_date = TODAY if target == "today" else YESTERDAY
-        max_date = min_date + datetime.timedelta(days=1)
-        return (min_date, max_date)
-    elif target == TargetPeriod.all:
-        return (None, None)
+def round_time(time_obj: datetime.time, thresh: int, to_nearest: int = 15) -> datetime.time:
+    mod = time_obj.minute % to_nearest
+    if mod == 0:
+        return time_obj
+
+    if mod <= thresh:
+        rounded_time = datetime.timedelta(minutes=-mod)
     else:
-        if target.value == "month":
-            min_date = TODAY.replace(day=1)
-            max_date = TOMORROW
-            return (min_date, max_date)
-        elif target.value == "lastmonth":
-            min_date = (TODAY.replace(day=1) - datetime.timedelta(days=1)).replace(
-                day=1
-            )
-        else:
-            target_month = Month[target.value]
-            min_date = TODAY.replace(month=target_month.value, day=1)
-        max_date = (
-            min_date.replace(month=min_date.month + 1)
-            if min_date.month < 12
-            else datetime.date(year=min_date.year + 1, month=1, day=1)
-        )
-        return (min_date, max_date)
+        rounded_time = datetime.timedelta(minutes=to_nearest - mod)
+
+    # throwaway dt object so we can use timedeltas for cleaner time math
+    temp_dt = datetime.datetime.combine(TODAY, time_obj) + rounded_time
+    return temp_dt.time()
 
 
 def str2enum(
@@ -93,6 +103,33 @@ def str2enum(
         )
 
 
+def target2dt(
+    target: Union[TargetPeriod, TargetDay],
+) -> tuple[Optional[datetime.date], Optional[datetime.date]]:
+    if target in TargetDay:
+        min_date = TODAY if target == "today" else YESTERDAY
+        max_date = min_date + datetime.timedelta(days=1)
+        return (min_date, max_date)
+    elif target == TargetPeriod.all:
+        return (None, None)
+    else:
+        if target.value == "month":
+            min_date = TODAY.replace(day=1)
+            max_date = TOMORROW
+            return (min_date, max_date)
+        elif target.value == "lastmonth":
+            min_date = (TODAY.replace(day=1) - datetime.timedelta(days=1)).replace(day=1)
+        else:
+            target_month = Month[target.value]
+            min_date = TODAY.replace(month=target_month.value, day=1)
+        max_date = (
+            min_date.replace(month=min_date.month + 1)
+            if min_date.month < 12
+            else datetime.date(year=min_date.year + 1, month=1, day=1)
+        )
+        return (min_date, max_date)
+
+
 def validate_datetime(
     ctx: click.Context, param: click.Parameter, dt: datetime.datetime
 ) -> datetime.datetime:
@@ -101,34 +138,6 @@ def validate_datetime(
         dt = dt.replace(year=TODAY.year, month=TODAY.month, day=TODAY.day)
     # strip seconds
     return clean_time(dt.replace(second=0, microsecond=0))
-
-
-@overload
-def clean_time(dt_obj: datetime.datetime) -> datetime.datetime:
-    ...
-
-
-@overload
-def clean_time(dt_obj: datetime.time) -> datetime.time:
-    "strips out seconds and partial seconds"
-    return dt_obj.replace(second=0, microsecond=0)
-
-
-def round_time(
-    time_obj: datetime.time, thresh: int, to_nearest: int = 15
-) -> datetime.time:
-    mod = time_obj.minute % to_nearest
-    if mod == 0:
-        return time_obj
-
-    if mod <= thresh:
-        rounded_time = datetime.timedelta(minutes=-mod)
-    else:
-        rounded_time = datetime.timedelta(minutes=to_nearest - mod)
-
-    # throwaway dt object so we can use timedeltas for cleaner time math
-    temp_dt = datetime.datetime.combine(TODAY, time_obj) + rounded_time
-    return temp_dt.time()
 
 
 class Log(NamedTuple):

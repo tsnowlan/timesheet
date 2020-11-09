@@ -6,9 +6,7 @@ from .models import Timesheet
 
 
 class NoData(Exception):
-    def __init__(
-        self, db_file: Path, target: datetime.date, message: Optional[str] = None
-    ) -> None:
+    def __init__(self, db_file: Path, target: datetime.date, message: Optional[str] = None) -> None:
         self.db_file = db_file
         self.target = target
         if message is None:

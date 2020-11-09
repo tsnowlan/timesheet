@@ -10,8 +10,8 @@ DEF_DBFILE = Path().home() / "timesheet.db"
 
 
 class Config:
-    normal_start: datetime.time = datetime.time(9, 0)
-    normal_quit: datetime.time = datetime.time(16, 30)
+    standard_start = datetime.time(9, 0)
+    standard_quit = datetime.time(16, 30)
     round_interval: int = 15
     round_threshold: int = round_interval // 2
     db_file: Path = DEF_DBFILE
@@ -40,7 +40,8 @@ class Config:
             format = ConfigFormat[config_file.suffix]
         except KeyError:
             raise ValueError(
-                f"Unrecognized config format {config_file}. Must be one of: {', '.join([f.value for f in ConfigFormat])}"
+                f"Unrecognized config format {config_file}. Must be one of: "
+                + ", ".join([f.value for f in ConfigFormat])
             )
 
         if format.value == "json":
@@ -71,7 +72,8 @@ class Config:
             import yaml
         except ModuleNotFoundError:
             print(
-                f"Could not import yaml to parse config {config_file}. Use a different format or make sure PyYAML is installed correctly"
+                f"Could not import yaml to parse config {config_file}. "
+                f"Use a different format or make sure PyYAML is installed correctly"
             )
             sys.exit(1)
         try:
@@ -87,7 +89,8 @@ class Config:
             import toml
         except ModuleNotFoundError:
             print(
-                f"Could not load toml to parse config {config_file}. Use a different format or make sure toml is installed correctly"
+                f"Could not load toml to parse config {config_file}. "
+                f"Use a different format or make sure toml is installed correctly"
             )
             sys.exit(1)
 

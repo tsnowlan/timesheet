@@ -64,9 +64,7 @@ def clock(
     except (ExistingData, NoData) as e:
         print(e)
         sys.exit(1)
-    print(
-        f"Successfully clocked {log_type.name.lower()} on {new_log.day} at {new_log.time}"
-    )
+    print(f"Successfully clocked {log_type.name.lower()} on {new_log.day} at {new_log.time}")
 
 
 @click.command(help="print out timesheet entries for the given date(s)")
@@ -76,9 +74,7 @@ def clock(
     default="today",
     callback=str2enum,
 )
-@click.option(
-    "--export", is_flag=True, help=f"print in a form easy to paste into the timesheet"
-)
+@click.option("--export", is_flag=True, help=f"print in a form easy to paste into the timesheet")
 def print_logs(target: AllTargetsType, export: bool) -> None:
     print_format = "export" if export else "print"
     min_date, max_date = target2dt(target)
@@ -115,6 +111,7 @@ def edit(log_type: LogType, log_time: datetime.datetime) -> None:
     default="today",
     callback=str2enum,
 )
+@click.option("--std", "use_standard", is_flag=True, help="Use standard times if no logs found")
 @click.option(
     "-v",
     "--validate",
@@ -127,7 +124,7 @@ def edit(log_type: LogType, log_time: datetime.datetime) -> None:
     is_flag=True,
     help="overwrite existing entries without prompting",
 )
-def backfill(target: AllTargetsType, validate: bool, overwrite: bool) -> None:
+def backfill(target: AllTargetsType, use_standard: bool, validate: bool, overwrite: bool) -> None:
     f"""
     Backfills timesheet days in the given period from system logs
 
@@ -142,7 +139,7 @@ def backfill(target: AllTargetsType, validate: bool, overwrite: bool) -> None:
     elif not min_date and not max_date:
         print(f"Backfilling as far as the logs will let us...", file=sys.stderr)
     new_logs = backfill_days(
-        min_date, max_date, any([validate, app_config.debug]), overwrite
+        min_date, max_date, use_standard, any([validate, app_config.debug]), overwrite
     )
     if new_logs:
         print(f"Created or updated {len(new_logs)} timesheet entries:")

@@ -3,7 +3,7 @@ import gzip
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import DefaultDict, Dict, Iterable, List, Literal, Optional, Tuple
+from typing import DefaultDict, Dict, Iterable, Literal, Optional, Tuple
 
 import sqlalchemy.exc
 
@@ -13,7 +13,7 @@ from .db import DB
 from .enums import LogType
 from .exceptions import ExistingData, NoData
 from .models import Timesheet
-from .util import AuthLog, Log, clean_time, ensure_db, log_date, round_time
+from .util import AuthLog, Log, clean_time, date_range, ensure_db, log_date, round_time
 
 # log parsing
 LOGIN_STRS = (
@@ -44,9 +44,7 @@ def print_range(
                 f"No data found between {from_day} and {until_day}",
             )
         elif from_day:
-            raise NoData(
-                db.db_file, from_day, f"No data found between {from_day} and {TOMORROW}"
-            )
+            raise NoData(db.db_file, from_day, f"No data found between {from_day} and {TOMORROW}")
         elif until_day:
             raise NoData(db.db_file, until_day, f"No data found before {TOMORROW}")
         else:
@@ -58,23 +56,20 @@ def print_range(
         until_day = TOMORROW
 
     if print_format == "print":
-        curr_day = from_day
         default_time = "None"
         print(ROW_HEADER)
-        while curr_day < until_day:
+        for curr_day in date_range(from_day, until_day, False):
             if curr_day in logs_by_day:
                 print(logs_by_day[curr_day])
             elif curr_day.weekday() > 4:
                 print(curr_day)
             else:
                 print(f"{curr_day}\t{default_time : <8}\t{default_time : <8}")
-            curr_day += datetime.timedelta(days=1)
     else:
         for log_type in LogType:
             print(f"{log_type.value.upper()}")
             print("=" * 10)
-            curr_day = from_day
-            while curr_day < until_day:
+            for curr_day in date_range(from_day, until_day, False):
                 if curr_day in logs_by_day:
                     rounded = round_time(
                         logs_by_day[curr_day].log(log_type).time,
@@ -85,8 +80,6 @@ def print_range(
                     print()
                 else:
                     print(None)
-
-                curr_day += datetime.timedelta(days=1)
             print()
 
 
@@ -105,9 +98,7 @@ def add_log(log_day: datetime.date, log_type: LogType, log_time: datetime.time) 
 
 
 @ensure_db(db)
-def edit_log(
-    log_day: datetime.date, log_type: LogType, log_time: datetime.time
-) -> Timesheet:
+def edit_log(log_day: datetime.date, log_type: LogType, log_time: datetime.time) -> Timesheet:
     log_data = {"day": log_day, log_type.value: log_time, "overwrite": True}
     if row_exists(log_day):
         new_row = update_row(**log_data)
@@ -173,9 +164,10 @@ def guess_day(
 def backfill_days(
     from_day: Optional[datetime.date] = None,
     until_day: Optional[datetime.date] = None,
+    use_standard: bool = False,
     validate: bool = False,
     overwrite: bool = False,
-) -> Optional[List[Timesheet]]:
+) -> Optional[list[Timesheet]]:
     """
     Backfill entries on weekdays in the given range based on auth.log activity.
 
@@ -183,23 +175,26 @@ def backfill_days(
     """
     idx = index_logs()
     if len(idx) == 0:
-        raise RuntimeError(
-            f"Unable to read auth logs, check permission and log location"
-        )
+        err = RuntimeError(f"Unable to read auth logs, check permission and log location")
+        if use_standard:
+            print(f"WARNING: {err}. Only filling standard days.", file=sys.stderr)
+        else:
+            raise err
+
     if from_day is None:
         from_day = idx[0].min_date
     if until_day is None:
         until_day = TOMORROW
     print(f"Backfilling from {from_day} until {until_day}")
 
-    all_activity = dict()
+    all_activity: dict[datetime.date, dict[LogType, list[datetime.time]]] = dict()
     for authlog in idx:
         # target range: [from_day, until_day)
         # log dates: [min_date, max_date]
         if (from_day >= authlog.min_date and from_day <= authlog.max_date) or (
             from_day < authlog.min_date and until_day > authlog.min_date
         ):
-            log_activity = get_activity(authlog.file, None, True, True)
+            log_activity = get_activity(authlog.file, log_in=True, log_out=True)
             for log_day in log_activity:
                 # skip any days outside of range or on the weekend
                 if log_day < from_day or log_day >= until_day or log_day.weekday() > 4:
@@ -210,11 +205,31 @@ def backfill_days(
                 else:
                     all_activity[log_day] = log_activity[log_day]
 
-    audit_list = list()
-    for a_day, activity in all_activity.items():
+    new_days: list[Timesheet] = []
+    AuditRow = Tuple[Timesheet, Tuple[Optional[datetime.time], Optional[datetime.time]]]
+    audit_list: list[AuditRow] = list()
+    # for a_day, activity in all_activity.items():
+    for a_day in date_range(from_day, until_day):
         curr_row = get_day(a_day)
-        clock_in = sorted(activity["in"])[0] if activity["in"] else None
-        clock_out = sorted(activity["out"])[-1] if activity["out"] else None
+        if use_standard:
+            clock_in = config.standard_start
+            clock_out = config.standard_quit
+        else:
+            clock_in = None
+            clock_out = None
+
+        if a_day in all_activity:
+            # get earliest login
+            if all_activity[a_day][LogType.IN]:
+                clock_in = sorted(all_activity[a_day][LogType.IN])[0]
+
+            # get last logout
+            if all_activity[a_day][LogType.OUT]:
+                clock_out = sorted(all_activity[a_day][LogType.OUT])[-1]
+        elif not use_standard:
+            # not in log activity, not using standard, nothing to do here
+            continue
+
         if curr_row:
             new_times = (
                 clock_in if clock_in and clock_in != curr_row.clock_in else None,
@@ -224,9 +239,8 @@ def backfill_days(
                 audit_list.append((curr_row, new_times))
         else:
             new_row = Timesheet(date=a_day, clock_in=clock_in, clock_out=clock_out)
-            audit_list.append((new_row, None))
+            new_days.append(new_row)
 
-    new_days: List[Timesheet] = []
     for (log_obj, updates) in audit_list:
         new_obj = merge_times(log_obj, updates, validate, overwrite)
         if new_obj:
@@ -242,7 +256,6 @@ def backfill_days(
         breakpoint()
         db.session.rollback()
         raise e
-
     return new_days
 
 
@@ -292,7 +305,7 @@ def merge_times(
             print(f"Skipping {current.date}")
             return
 
-    if new_times and any(new_times):
+    if any(new_times):
         if new_times[0]:
             current.clock_in = new_times[0]  # type: ignore
         if new_times[1]:
@@ -317,10 +330,10 @@ def get_activity(
     day: Optional[datetime.date] = None,
     log_in: bool = True,
     log_out: bool = False,
-) -> DefaultDict[datetime.date, Dict[LogType, List[datetime.time]]]:
-    results: DefaultDict[
-        datetime.date, Dict[LogType, List[datetime.time]]
-    ] = defaultdict(lambda: {LogType.IN: [], LogType.OUT: []})
+) -> DefaultDict[datetime.date, Dict[LogType, list[datetime.time]]]:
+    results: DefaultDict[datetime.date, Dict[LogType, list[datetime.time]]] = defaultdict(
+        lambda: {LogType.IN: [], LogType.OUT: []}
+    )
 
     open_func = open
     if logfile.name.endswith(".gz"):
@@ -339,13 +352,9 @@ def get_activity(
                     break
                 elif line_day < day:
                     continue
-            if log_in and any(
-                [True for login_str in LOGIN_STRS if login_str in log_line]
-            ):
+            if log_in and any([True for login_str in LOGIN_STRS if login_str in log_line]):
                 log_type = LogType.IN
-            elif log_out and any(
-                [True for logout_str in LOGOUT_STRS if logout_str in log_line]
-            ):
+            elif log_out and any([True for logout_str in LOGOUT_STRS if logout_str in log_line]):
                 log_type = LogType.OUT
             else:
                 continue
@@ -355,7 +364,7 @@ def get_activity(
     return results
 
 
-def index_logs() -> List[AuthLog]:
+def index_logs() -> list[AuthLog]:
     log_index = list()
     for logfile in get_logs():
         open_func = open
@@ -399,7 +408,7 @@ def get_range(
     from_day: Optional[datetime.date] = None,
     until_day: Optional[datetime.date] = None,
     missing_okay: bool = True,
-) -> List[Timesheet]:
+) -> list[Timesheet]:
     query = db.session.query(Timesheet)
     if from_day and until_day:
         query = query.filter(Timesheet.date >= from_day, Timesheet.date < until_day)
@@ -410,9 +419,7 @@ def get_range(
 
     logs = query.all()
     if len(logs) == 0 and not missing_okay:
-        raise RuntimeError(
-            f"No timesheet entries found from {from_day} until {until_day}"
-        )
+        raise RuntimeError(f"No timesheet entries found from {from_day} until {until_day}")
     return logs
 
 
@@ -427,12 +434,8 @@ def add_row(
     is_flex: bool = False,
 ) -> Timesheet:
     if clock_in is None and clock_out is None:
-        raise ValueError(
-            "You must specify at least one time to create a new timesheet entry"
-        )
-    new_row = Timesheet(
-        date=day, clock_in=clock_in, clock_out=clock_out, is_flex=is_flex
-    )
+        raise ValueError("You must specify at least one time to create a new timesheet entry")
+    new_row = Timesheet(date=day, clock_in=clock_in, clock_out=clock_out, is_flex=is_flex)
     try:
         db.session.add(new_row)
         db.session.commit()
@@ -470,9 +473,7 @@ def update_row(
             bail.append("clock_out")
 
     if len(bail):
-        info_str = ", ".join(
-            [f"{k.replace('_', ' ')} ({getattr(row, k)})" for k in bail]
-        )
+        info_str = ", ".join([f"{k.replace('_', ' ')} ({getattr(row, k)})" for k in bail])
         print(
             f"Not overwriting existing log{'s' if len(bail) > 1 else ''} on {day} for {info_str}",
             file=sys.stderr,

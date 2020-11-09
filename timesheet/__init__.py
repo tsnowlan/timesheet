@@ -130,9 +130,6 @@ def backfill(target: AllTargetsType, use_standard: bool, validate: bool, overwri
 
     Valid arguments: {', '.join(AllTargets)}
     """
-    # TODO: option to fill days outside of log range with "standard" time
-    print(f"got target={target}, validate={validate}, overwrite={overwrite}")
-
     min_date, max_date = target2dt(target)
     if min_date and not max_date:
         max_date = min_date + datetime.timedelta(days=1)

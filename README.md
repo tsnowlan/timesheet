@@ -2,6 +2,8 @@
 
 Records start / stop working times
 
+Python typing magic is used, specifically for `pyright`/`pylance` in [VS Code](https://github.com/VSCodium/vscodium). Not completely compatible with `mypy` because why would Microsoft do a silly thing like use an existing project that already has a high user base. Or let their Intellisense correctly use `mypy` options. That would just be silly.
+
 ## Current features
 
 - Can "guess" start / stop times by parsing `/var/log/auth.log*`
@@ -13,7 +15,7 @@ Records start / stop working times
 
 ## Installation
 
-Recommend using [pipx](https://pipxproject.github.io/pipx/) unless (or even if) using python3.9 in your base environment
+Because of the fancy python typing used, a minimum python version of 3.9 is required. Using [pipx](https://pipxproject.github.io/pipx/) to install is recommended unless (or even if) you're using python3.9 in your base environment. Python3.9 can be installed via conda (`conda create -n py3.9 python==3.9`) or pyenv (`pyenv install 3.9`) or maybe even your package manager.
 
 ```bash
 # from the repo root

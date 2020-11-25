@@ -44,3 +44,4 @@ Two executables are created on installation:
 - Tests
 - Write logs directly to excel timesheet?
 - switch to logging instead of plain prints
+- actual nice documentation?

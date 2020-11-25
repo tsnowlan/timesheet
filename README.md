@@ -29,6 +29,13 @@ PIPX_DEFAULT_PYTHON=/path/to/python3.9 pipx install .
 git pull && PIPX_DEFAULT_PYTHON=/path/to/python3.9 pipx install . --force
 ```
 
+## Usage
+
+Two executables are created on installation:
+
+- `timesheet`: full functionality. see: `timesheet --help`
+- `clock`: shortcut to `timesheet clock` for easier `clock in`, `clock out`. see: `clock --help`
+
 ## TODO:
 
 - Show current flex time balance

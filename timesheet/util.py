@@ -106,8 +106,8 @@ def str2enum(
 def target2dt(
     target: Union[TargetPeriod, TargetDay],
 ) -> tuple[Optional[datetime.date], Optional[datetime.date]]:
-    if target in TargetDay:
-        min_date = TODAY if target == "today" else YESTERDAY
+    if target in (TargetDay.today, TargetDay.yesterday):
+        min_date = TODAY if target.value == "today" else YESTERDAY
         max_date = min_date + datetime.timedelta(days=1)
         return (min_date, max_date)
     elif target == TargetPeriod.all:

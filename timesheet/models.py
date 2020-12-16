@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Date, Time
+from sqlalchemy import Boolean, Column, Date, Numeric, Time
 
 from .db import Base
 from .enums import LogType
@@ -21,3 +21,10 @@ class Timesheet(Base):
 
     def log(self, log_type: LogType) -> Log:
         return Log(self.date, log_type, getattr(self, log_type.value, None))
+
+
+class FlexBalance(Base):
+    __tablename__ = "flexbalance"
+
+    date = Column(Date, primary_key=True, unique=True, index=True)
+    current_hours = Column(Numeric, nullable=False)

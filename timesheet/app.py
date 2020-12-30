@@ -71,15 +71,18 @@ def print_range(
             print("=" * 10)
             for curr_day in date_range(from_day, until_day, False):
                 if curr_day in logs_by_day:
-                    rounded = round_time(
-                        logs_by_day[curr_day].log(log_type).time,
-                        config.round_threshold,
-                    )
-                    print(f"{rounded.hour:02}\t{rounded.minute:02}")
+                    if logs_by_day[curr_day].log(log_type).time is None:
+                        print()
+                    else:
+                        rounded = round_time(
+                            logs_by_day[curr_day].log(log_type).time,
+                            config.round_threshold,
+                        )
+                        print(f"{rounded.hour:02}\t{rounded.minute:02}")
                 elif curr_day.weekday() > 4:
                     print()
                 else:
-                    print(None)
+                    print()
             print()
 
 
@@ -256,7 +259,8 @@ def backfill_days(
         breakpoint()
         db.session.rollback()
         raise e
-    return new_days
+
+    return sorted(new_days, key=lambda x: x.date)
 
 
 ### internal stuff

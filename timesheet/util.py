@@ -122,6 +122,9 @@ def target2dt(
         else:
             target_month = Month[target.value]
             min_date = TODAY.replace(month=target_month.value, day=1)
+            # don't try and see the future
+            if min_date > TODAY:
+                min_date = min_date.replace(year=min_date.year - 1)
         max_date = (
             min_date.replace(month=min_date.month + 1)
             if min_date.month < 12

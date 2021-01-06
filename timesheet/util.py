@@ -1,14 +1,12 @@
 import datetime
-import sys
-from functools import wraps
+import logging
 from pathlib import Path
-from typing import Callable, Iterable, NamedTuple, Optional, Union, overload
+from typing import Iterable, NamedTuple, Optional, Union, overload
 
 import click
 from click.exceptions import BadParameter
 
 from .constants import TODAY, TOMORROW, YESTERDAY
-from .db import DB
 from .enums import AllTargets, LogType, Month, TargetDay, TargetPeriod
 
 
@@ -36,17 +34,10 @@ def date_range(
         start += datetime.timedelta(days=1)
 
 
-def ensure_db(db: DB) -> Callable:
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        def inner(*args, **kwargs):
-            db._validate_conn()
-            db._ensure_db()
-            return func(*args, **kwargs)
-
-        return inner
-
-    return decorator
+def init_logs(log_level: int = logging.INFO, force: bool = False):
+    logging.basicConfig(
+        format="%(asctime)s [%(levelname)s] %(message)s", level=log_level, force=force
+    )
 
 
 def log_date(log_line: str) -> datetime.datetime:
@@ -58,8 +49,8 @@ def log_date(log_line: str) -> datetime.datetime:
         )
     except ValueError as e:
         if "does not match format" in str(e):
-            print(f"Could not parse date from log_line: {log_line}", file=sys.stderr)
-            sys.exit(1)
+            logging.error(f"Could not parse date from log_line: {log_line}")
+            exit(1)
         else:
             raise e
     return dt

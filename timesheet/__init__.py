@@ -1,5 +1,7 @@
 import datetime
+import logging
 import sys
+from io import TextIOWrapper
 from pathlib import Path
 from typing import Optional
 
@@ -12,12 +14,13 @@ from .app import (
     db,
     edit_log,
     guess_day,
+    import_calendar,
     print_range,
 )
 from .constants import DATETIME_FORMATS, ROW_HEADER, TODAY
 from .enums import AllTargets, AllTargetsType, LogType
 from .exceptions import ExistingData, NoData
-from .util import str2enum, target2dt, validate_datetime
+from .util import init_logs, str2enum, target2dt, validate_datetime
 
 
 @click.command(help="clock in and out")
@@ -53,7 +56,7 @@ def clock(
     db_file: Optional[Path],
 ) -> None:
     update_config(config_file, db_file)
-    db.connect(app_config.db_file, app_config.debug)
+    db.connect(app_config.db_file)
 
     try:
         if guess:
@@ -62,9 +65,9 @@ def clock(
         else:
             new_log = add_log(log_time.date(), log_type, log_time.time())
     except (ExistingData, NoData) as e:
-        print(e)
-        sys.exit(1)
-    print(f"Successfully clocked {log_type.name.lower()} on {new_log.day} at {new_log.time}")
+        logging.error(e)
+        exit(1)
+    logging.info(f"Successfully clocked {log_type.name.lower()} on {new_log.day} at {new_log.time}")
 
 
 @click.command(help="print out timesheet entries for the given date(s)")
@@ -81,8 +84,8 @@ def print_logs(target: AllTargetsType, export: bool) -> None:
     try:
         print_range(min_date, max_date, print_format)
     except NoData as e:
-        print(e)
-        sys.exit(1)
+        logging.error(e)
+        exit(1)
 
 
 @click.command(help="edit an existing log")
@@ -98,8 +101,8 @@ def edit(log_type: LogType, log_time: datetime.datetime) -> None:
     try:
         new_log = edit_log(log_time.date(), log_type, log_time.time())
     except NoData as e:
-        print(e)
-        sys.exit(1)
+        logging.error(e)
+        exit(1)
     print(f"Updated timesheet entry:\n{ROW_HEADER}")
     print(new_log)
 
@@ -134,7 +137,7 @@ def backfill(target: AllTargetsType, use_standard: bool, validate: bool, overwri
     if min_date and not max_date:
         max_date = min_date + datetime.timedelta(days=1)
     elif not min_date and not max_date:
-        print(f"Backfilling as far as the logs will let us...", file=sys.stderr)
+        logging.debug(f"Backfilling as far as the logs will let us...", file=sys.stderr)
     new_logs = backfill_days(
         min_date, max_date, use_standard, any([validate, app_config.debug]), overwrite
     )
@@ -144,8 +147,14 @@ def backfill(target: AllTargetsType, use_standard: bool, validate: bool, overwri
         for log in new_logs:
             print(log)
     else:
-        print(f"No timesheet entries changed")
-        sys.exit(1)
+        logging.info(f"No timesheet entries changed")
+        exit(1)
+
+
+@click.command(help="updates the holidays table")
+@click.argument("cal", metavar="calendar.ics", type=click.File())
+def update_holidays(cal: TextIOWrapper):
+    import_calendar(cal)
 
 
 @click.group()
@@ -168,7 +177,7 @@ def run_cli(
     debug: bool,
 ) -> None:
     update_config(config_file, db_file, debug)
-    db.connect(app_config.db_file, app_config.debug)
+    db.connect(app_config.db_file)
 
 
 def update_config(
@@ -183,6 +192,10 @@ def update_config(
         app_config.db_file = db_file
     if debug:
         app_config.debug = debug
+    if app_config.debug:
+        init_logs(log_level=logging.DEBUG)
+    else:
+        init_logs()
 
 
 ####
@@ -191,6 +204,7 @@ run_cli.add_command(clock)
 run_cli.add_command(print_logs, "print")
 run_cli.add_command(edit)
 run_cli.add_command(backfill)
+run_cli.add_command(update_holidays)
 
 
 def main() -> None:

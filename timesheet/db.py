@@ -4,19 +4,17 @@ from typing import Optional, Union
 from sqlalchemy import MetaData, create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
-from sqlalchemy.ext.declarative.api import declarative_base
 from sqlalchemy.orm import scoped_session, sessionmaker
 
-md: MetaData = MetaData()
-Base = declarative_base()
-Base.metadata = md
+from .models import Base
 
 
-class DB(object):
+class DB:
     engine: Engine
     session: scoped_session
     db_file: Path
-    metadata: MetaData = md
+    metadata: MetaData = Base.metadata
+    _sessionmaker: sessionmaker
 
     def __init__(self, db_file: Optional[Path] = None, echo_sql=False) -> None:
         if db_file:
@@ -26,8 +24,8 @@ class DB(object):
     def _init_session(self, echo_sql: bool) -> None:
         db_str = f"sqlite:///{self.db_file}"
         self.engine = create_engine(db_str, echo=echo_sql)
-        self.sessionmaker = sessionmaker(bind=self.engine)
-        self.session = scoped_session(self.sessionmaker)
+        self._sessionmaker = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+        self.session = scoped_session(self._sessionmaker)
 
     def _validate_conn(self) -> None:
         conn_attrs = ["session", "engine", "db_file"]
@@ -68,7 +66,7 @@ class DB(object):
         self._init_session(echo_sql)
 
     def create_db(self) -> None:
-        Base.metadata.create_all(self.engine)
+        self.metadata.create_all(self.engine)
 
     def disconnect(self) -> None:
         if hasattr(self, "session"):
@@ -78,5 +76,5 @@ class DB(object):
         assert (
             getattr(self, "session", None) is not None and getattr(self, "engine", None) is not None
         )
-        if not all([self.engine.has_table(t.name) for t in md.sorted_tables]):
+        if not all([self.engine.has_table(t.name) for t in self.metadata.sorted_tables]):
             self.create_db()

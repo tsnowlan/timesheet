@@ -1,8 +1,12 @@
-from sqlalchemy import Boolean, Column, Date, Numeric, Time
+from sqlalchemy import Boolean, Column, Date, MetaData, Numeric, String, Time
+from sqlalchemy.ext.declarative.api import declarative_base
 
-from .db import Base
 from .enums import LogType
 from .util import Log
+
+md: MetaData = MetaData()
+Base = declarative_base()
+Base.metadata = md
 
 
 class Timesheet(Base):
@@ -21,6 +25,14 @@ class Timesheet(Base):
 
     def log(self, log_type: LogType) -> Log:
         return Log(self.date, log_type, getattr(self, log_type.value, None))
+
+
+class Holiday(Base):
+    __tablename__ = "holidays"
+
+    date = Column(Date, primary_key=True, index=True)
+    name = Column(String)
+    comment = Column(String)
 
 
 class FlexBalance(Base):

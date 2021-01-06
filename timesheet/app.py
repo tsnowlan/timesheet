@@ -77,7 +77,7 @@ def print_range(
         for curr_day in date_range(from_day, until_day, False):
             if curr_day in logs_by_day:
                 print(logs_by_day[curr_day])
-            elif curr_day.weekday() > 4:
+            elif curr_day.weekday() > 4 or is_holiday(curr_day):
                 print(curr_day)
             else:
                 print(f"{curr_day}\t{default_time : <8}\t{default_time : <8}")
@@ -95,7 +95,7 @@ def print_range(
                             config.round_threshold,
                         )
                         print(f"{rounded.hour:02}\t{rounded.minute:02}")
-                elif curr_day.weekday() > 4:
+                elif curr_day.weekday() > 4 or is_holiday(curr_day):
                     print()
                 else:
                     print()
@@ -453,6 +453,10 @@ def index_logs() -> list[AuthLog]:
         log_index.append(AuthLog(logfile, min_date, max_date))
     # start from the oldest logs (auth.log.4.gz)
     return sorted(log_index, key=lambda x: x.min_date)
+
+
+def is_holiday(day: datetime.date) -> bool:
+    return db.session.query(Holiday).filter(Holiday.date == day).count() > 0
 
 
 def get_day(day: datetime.date, missing_okay: bool = True) -> Timesheet:

@@ -154,6 +154,7 @@ def backfill(target: AllTargetsType, use_standard: bool, validate: bool, overwri
 @click.command(help="updates the holidays table")
 @click.argument("cal", metavar="calendar.ics", type=click.File())
 def update_holidays(cal: TextIOWrapper):
+    """ ics file from e.g., https://www.calendarlabs.com/ical-calendar/holidays/norway-holidays-62/ """
     import_calendar(cal)
 
 

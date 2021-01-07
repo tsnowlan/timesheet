@@ -1,19 +1,21 @@
 import datetime
 import gzip
-import sys
+import logging
 from collections import defaultdict
+from functools import wraps
+from io import TextIOWrapper
 from pathlib import Path
-from typing import DefaultDict, Dict, Iterable, Literal, Optional, Tuple
+from typing import Callable, DefaultDict, Dict, Iterable, Literal, Optional, Text, Tuple
 
-import sqlalchemy.exc
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .config import Config
 from .constants import ROW_HEADER, TODAY, TOMORROW
 from .db import DB
 from .enums import LogType
 from .exceptions import ExistingData, NoData
-from .models import Timesheet
-from .util import AuthLog, Log, clean_time, date_range, ensure_db, log_date, round_time
+from .models import Holiday, Timesheet
+from .util import AuthLog, Log, clean_time, date_range, log_date, round_time
 
 # log parsing
 LOGIN_STRS = (
@@ -27,6 +29,20 @@ LOGOUT_STRS = ("Lid closed", "System is powering down")
 # exported objects
 db: DB = DB()
 config: Config = Config()
+
+
+def ensure_db(db: DB) -> Callable:
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def inner(*args, **kwargs):
+            db._validate_conn()
+            db._ensure_db()
+            return func(*args, **kwargs)
+
+        return inner
+
+    return decorator
+
 
 # exported functions
 @ensure_db(db)
@@ -61,7 +77,7 @@ def print_range(
         for curr_day in date_range(from_day, until_day, False):
             if curr_day in logs_by_day:
                 print(logs_by_day[curr_day])
-            elif curr_day.weekday() > 4:
+            elif curr_day.weekday() > 4 or is_holiday(curr_day):
                 print(curr_day)
             else:
                 print(f"{curr_day}\t{default_time : <8}\t{default_time : <8}")
@@ -79,7 +95,7 @@ def print_range(
                             config.round_threshold,
                         )
                         print(f"{rounded.hour:02}\t{rounded.minute:02}")
-                elif curr_day.weekday() > 4:
+                elif curr_day.weekday() > 4 or is_holiday(curr_day):
                     print()
                 else:
                     print()
@@ -134,8 +150,8 @@ def guess_day(
             logouts.extend(log_activity[day][LogType.OUT])
 
     if len(logouts) == 0 and len(logins) == 0:
-        print(f"Unable to find any activity on {day}", file=sys.stderr)
-        sys.exit(1)
+        logging.error(f"Unable to find any activity on {day}")
+        exit(1)
 
     # have to do this extra explicitly so typing works
     row_info = {
@@ -180,7 +196,7 @@ def backfill_days(
     if len(idx) == 0:
         err = RuntimeError(f"Unable to read auth logs, check permission and log location")
         if use_standard:
-            print(f"WARNING: {err}. Only filling standard days.", file=sys.stderr)
+            logging.warning(f"{err}: Only filling standard days.")
         else:
             raise err
 
@@ -188,7 +204,7 @@ def backfill_days(
         from_day = idx[0].min_date
     if until_day is None:
         until_day = TOMORROW
-    print(f"Backfilling from {from_day} until {until_day}")
+    logging.info(f"Backfilling from {from_day} until {until_day}")
 
     all_activity: dict[datetime.date, dict[LogType, list[datetime.time]]] = dict()
     for authlog in idx:
@@ -263,6 +279,48 @@ def backfill_days(
     return sorted(new_days, key=lambda x: x.date)
 
 
+@ensure_db(db)
+def import_calendar(cal: TextIOWrapper):
+    """ Parse an ics file and load into db """
+    in_event = False
+    curr_event = dict()
+    all_events = []
+    for line in cal:
+        if not in_event and line.strip() == "BEGIN:VEVENT":
+            in_event = True
+        elif in_event:
+            key, val = line.strip().split(":", 1)
+            if key == "SUMMARY":
+                curr_event["name"] = val
+            elif key == "DTSTART":
+                curr_event["date"] = datetime.datetime.strptime(val, "%Y%m%d").date()
+            elif key == "END":
+                existing = (
+                    db.session.query(Holiday)
+                    .filter(
+                        Holiday.date == curr_event["date"] and Holiday.name == curr_event["name"]
+                    )
+                    .all()
+                )
+                if existing:
+                    logging.debug("{name} on {date} already exists, skipping".format(**curr_event))
+                    continue
+                logging.debug("Creating holiday '{name}' on {date}".format(**curr_event))
+                hday = Holiday(**curr_event)
+                all_events.append(hday)
+                curr_event = dict()
+                in_event = False
+    try:
+        db.session.add_all(all_events)
+        db.session.commit()
+    except SQLAlchemyError as e:
+        breakpoint()
+        db.session.rollback()
+        raise e
+    logging.info(f"Added {len(all_events)} new holidays to table")
+    pass
+
+
 ### internal stuff
 
 
@@ -282,7 +340,7 @@ def merge_times(
                 co_str += f" -> {new_times[1]}"
             msg_str = f"Update existing data on {current.date}: {ci_str}, {co_str}"
             if not get_resp(msg_str):
-                print(f"Skipping {current.date}")
+                logging.info(f"Skipping {current.date}")
                 return
         else:
             # skip any existing values unless overwrite enabled
@@ -306,7 +364,7 @@ def merge_times(
         if validate and not get_resp(
             f"Create new entry on {current.date}: clock in {current.clock_in}, clock out {current.clock_out}"
         ):
-            print(f"Skipping {current.date}")
+            logging.info(f"Skipping {current.date}")
             return
 
     if any(new_times):
@@ -387,7 +445,7 @@ def index_logs() -> list[AuthLog]:
                 last_line = logline
 
         if first_line is None or last_line is None:
-            print(f"Malformed authlog {logfile}, skipping", file=sys.stderr)
+            logging.error(f"Malformed authlog {logfile}, skipping")
             continue
 
         min_date = log_date(first_line).date()
@@ -395,6 +453,10 @@ def index_logs() -> list[AuthLog]:
         log_index.append(AuthLog(logfile, min_date, max_date))
     # start from the oldest logs (auth.log.4.gz)
     return sorted(log_index, key=lambda x: x.min_date)
+
+
+def is_holiday(day: datetime.date) -> bool:
+    return db.session.query(Holiday).filter(Holiday.date == day).count() > 0
 
 
 def get_day(day: datetime.date, missing_okay: bool = True) -> Timesheet:
@@ -443,16 +505,13 @@ def add_row(
     try:
         db.session.add(new_row)
         db.session.commit()
-    except sqlalchemy.exc.IntegrityError as e:
+    except IntegrityError as e:
         db.session.rollback()
         if "UNIQUE constraint failed" in str(e):
-            print(
-                f"Cannot create duplicate log entry for {day}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+            logging.error(f"Cannot create duplicate log entry for {day}")
+            exit(1)
         else:
-            raise (e)
+            raise e
     return new_row
 
 
@@ -478,16 +537,14 @@ def update_row(
 
     if len(bail):
         info_str = ", ".join([f"{k.replace('_', ' ')} ({getattr(row, k)})" for k in bail])
-        print(
-            f"Not overwriting existing log{'s' if len(bail) > 1 else ''} on {day} for {info_str}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        plural = "s" if len(bail) > 1 else ""
+        logging.error(f"Not overwriting existing log{plural} on {day} for {info_str}")
+        exit(1)
 
     try:
         db.session.add(row)
         db.session.commit()
-    except sqlalchemy.exc.SQLAlchemyError as e:
+    except SQLAlchemyError as e:
         # something might happen?
         breakpoint()
         db.session.rollback()

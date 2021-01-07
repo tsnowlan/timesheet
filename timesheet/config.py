@@ -1,10 +1,9 @@
 import datetime
-import sys
+import logging
 from pathlib import Path
 from typing import Optional
 
 from .enums import ConfigFormat
-
 
 DEF_DBFILE = Path().home() / "timesheet.db"
 
@@ -30,10 +29,7 @@ class Config:
             if strict:
                 raise (err)
             else:
-                print(
-                    f"WARNING: {err}. Continuing with system defaults...",
-                    sys.stderr,
-                )
+                logging.warning(f"{err}. Continuing with system defaults...")
                 return
 
         try:
@@ -60,7 +56,7 @@ class Config:
                 if strict:
                     raise err
                 else:
-                    print(f"WARNING: {err}. Skipping...", file=sys.stderr)
+                    logging.warning(f"{err}. Skipping...")
 
     def _from_json(self, config_file: Path) -> None:
         import json
@@ -71,11 +67,11 @@ class Config:
         try:
             import yaml
         except ModuleNotFoundError:
-            print(
+            logging.error(
                 f"Could not import yaml to parse config {config_file}. "
                 f"Use a different format or make sure PyYAML is installed correctly"
             )
-            sys.exit(1)
+            exit(1)
         try:
             # Use LibYAML if available
             from yaml import CSafeLoader as SafeLoader
@@ -88,11 +84,11 @@ class Config:
         try:
             import toml
         except ModuleNotFoundError:
-            print(
+            logging.error(
                 f"Could not load toml to parse config {config_file}. "
                 f"Use a different format or make sure toml is installed correctly"
             )
-            sys.exit(1)
+            exit(1)
 
         self.update(**toml.loads(config_file.read_text()))
 

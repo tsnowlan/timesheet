@@ -1,8 +1,11 @@
-from sqlalchemy import Boolean, Column, Date, MetaData, Numeric, String, Time
+import datetime
+
+from sqlalchemy import Boolean, Column, Date, MetaData, String, Time
 from sqlalchemy.ext.declarative.api import declarative_base
+from sqlalchemy.sql.sqltypes import Integer
 
 from .enums import LogType
-from .util import Log, log_date
+from .util import Log
 
 md: MetaData = MetaData()
 Base = declarative_base()
@@ -45,7 +48,34 @@ class Holiday(Base):
 
 
 class FlexBalance(Base):
+    """
+    keeps track of current flextime balance
+
+    balance is tracked in seconds for cleaner math, but hours are used for human readability
+    """
+
     __tablename__ = "flexbalance"
 
     date = Column(Date, primary_key=True, unique=True, index=True)
-    current_hours = Column(Numeric, nullable=False)
+    seconds = Column(Integer, nullable=False)
+
+    def __str__(self) -> str:
+        return f"{self.date}: {self.hours}h"
+
+    def __repr__(self) -> str:
+        return f"<FlexBalance date={self.date} seconds={self.seconds}>"
+
+    @property
+    def hours(self) -> float:
+        return self.seconds / 3600
+
+    @property
+    def hr_min(self) -> str:
+        hr, sec = divmod(self.seconds, 3600)
+        mins = sec // 60
+        return f"{hr}:{mins:02d}"
+
+    @classmethod
+    def from_timedelta(cls, dt: datetime.date, bal_dt: datetime.timedelta) -> "FlexBalance":
+        secs = bal_dt.seconds + bal_dt.days * 86400
+        return cls(date=dt, seconds=secs)

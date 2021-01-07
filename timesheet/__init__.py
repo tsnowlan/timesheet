@@ -8,20 +8,22 @@ from typing import Optional
 import click
 
 from .app import (
-    add_log,
-    backfill_days,
     config as app_config,
     db,
+    add_log,
+    backfill_days,
     edit_log,
     flex_date,
+    get_flex_balance,
     guess_day,
     import_calendar,
     print_range,
+    set_flex_balance,
 )
 from .constants import DATE_FORMATS, DATETIME_FORMATS, ROW_HEADER, TODAY
 from .enums import AllTargets, AllTargetsType, LogType
 from .exceptions import ExistingData, NoData
-from .util import init_logs, dt2date, str2enum, target2dt, validate_datetime
+from .util import dt2date, init_logs, str2enum, target2dt, validate_datetime
 
 
 @click.command(help="clock in and out")
@@ -36,7 +38,7 @@ from .util import init_logs, dt2date, str2enum, target2dt, validate_datetime
 @click.argument(
     "log_time",
     metavar="[TIME_STRING]",
-    default=f"{datetime.datetime.now()}",
+    default=str(datetime.datetime.now()),
     type=click.DateTime(DATETIME_FORMATS),
     callback=validate_datetime,
 )
@@ -187,9 +189,29 @@ def flex():
     pass
 
 
-@flex.command(help="show current flex time balance")
-def balance():
-    raise NotImplemented
+@flex.command("balance", help=f"show flex balance for the given date (default: {TODAY})")
+@click.argument(
+    "date",
+    metavar="[DATE]",
+    type=click.DateTime(DATE_FORMATS),
+    callback=dt2date,
+    default=str(TODAY),
+)
+def get_balance(date: datetime.date):
+    try:
+        current_balance = get_flex_balance(date)
+    except NoData as e:
+        print(e)
+        exit(1)
+    when = "Current" if date == TODAY else str(date)
+    print(f"{when} balance: {current_balance.hours}h")
+
+
+@flex.command(help="update flex balance table to the current day")
+@click.option("--force", is_flag=True, help="overwrite any existing balance for today")
+def update_balance():
+    new_balance = set_flex_balance(TODAY)
+    print(f"New flex balance: {new_balance.hours}h")
 
 
 @flex.command(help="set flex balance in hours at a given date")
@@ -197,14 +219,17 @@ def balance():
     "date", metavar="DATE", type=click.DateTime(DATE_FORMATS), callback=dt2date, required=True
 )
 @click.argument("balance", type=float, required=True)
-def set_balance(date: datetime.date, balance: float):
-    raise NotImplemented
+@click.option("--force", is_flag=True, help="overwrite any existing balance on the given day")
+def set_balance(date: datetime.date, balance: float, force: bool):
+    balance_dt = datetime.timedelta(hours=balance)
+    new_balance = set_flex_balance(date, balance_dt, force)
+    print(f"New flex balance: {new_balance.hours}h")
 
 
-@flex.command("day", help="mark the given date as flexed")
+@flex.command("day", help=f"mark the given date as flexed (default: {TODAY})")
 @click.argument(
     "date",
-    metavar="DATE",
+    metavar="[DATE]",
     type=click.DateTime(DATE_FORMATS),
     callback=dt2date,
     default=str(TODAY),

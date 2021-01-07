@@ -5,17 +5,17 @@ from collections import defaultdict
 from functools import wraps
 from io import TextIOWrapper
 from pathlib import Path
-from typing import Callable, DefaultDict, Dict, Iterable, Literal, Optional, Text, Tuple
+from typing import Callable, DefaultDict, Dict, Iterable, Literal, Optional, Tuple
 
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError
 
 from .config import Config
 from .constants import ROW_HEADER, TODAY, TOMORROW
 from .db import DB
 from .enums import LogType
 from .exceptions import ExistingData, NoData
-from .models import Holiday, Timesheet
-from .util import AuthLog, Log, clean_time, date_range, log_date, round_time
+from .models import FlexBalance, Holiday, Timesheet
+from .util import AuthLog, Log, clean_time, date_range, log_date, round_time, time_difference
 
 # log parsing
 LOGIN_STRS = (
@@ -56,15 +56,17 @@ def print_range(
         if from_day and until_day:
             raise NoData(
                 db.db_file,
-                from_day,
+                "timesheet.date",
                 f"No data found between {from_day} and {until_day}",
             )
         elif from_day:
-            raise NoData(db.db_file, from_day, f"No data found between {from_day} and {TOMORROW}")
+            raise NoData(
+                db.db_file, "timesheet.date", f"No data found between {from_day} and {TOMORROW}"
+            )
         elif until_day:
-            raise NoData(db.db_file, until_day, f"No data found before {TOMORROW}")
+            raise NoData(db.db_file, "timesheet.date", f"No data found before {TOMORROW}")
         else:
-            raise NoData(db.db_file, TODAY, f"No log entries found, table is empty")
+            raise NoData(db.db_file, "timesheet.date", f"No log entries found, table is empty")
 
     if from_day is None:
         from_day = sorted(logs_by_day.keys())[0]
@@ -77,7 +79,7 @@ def print_range(
         for curr_day in date_range(from_day, until_day, False):
             if curr_day in logs_by_day:
                 print(logs_by_day[curr_day])
-            elif curr_day.weekday() > 4 or is_holiday(curr_day):
+            elif not is_workday(curr_day):
                 print(curr_day)
             else:
                 print(f"{curr_day}\t{default_time : <8}\t{default_time : <8}")
@@ -98,8 +100,6 @@ def print_range(
                         print()
                     else:
                         print("Af")
-                elif curr_day.weekday() > 4 or is_holiday(curr_day):
-                    print()
                 else:
                     print()
             print()
@@ -125,7 +125,7 @@ def edit_log(log_day: datetime.date, log_type: LogType, log_time: datetime.time)
     if row_exists(log_day):
         new_row = update_row(**log_data)
     else:
-        raise NoData(db.db_file, log_day)
+        raise NoData(db.db_file, f"timesheet.date={log_day}")
     return new_row
 
 
@@ -218,8 +218,8 @@ def backfill_days(
         ):
             log_activity = get_activity(authlog.file, log_in=True, log_out=True)
             for log_day in log_activity:
-                # skip any days outside of range or on the weekend
-                if log_day < from_day or log_day >= until_day or log_day.weekday() > 4:
+                # skip any days outside of range and weekends/holidays
+                if log_day < from_day or log_day >= until_day or not is_workday(log_day):
                     continue
                 if log_day in all_activity:
                     for lt in LogType:
@@ -271,14 +271,8 @@ def backfill_days(
     if len(new_days) == 0:
         return
 
-    try:
-        db.session.add_all(new_days)
-        db.session.commit()
-    except Exception as e:
-        breakpoint()
-        db.session.rollback()
-        raise e
-
+    db.session.add_all(new_days)
+    db.try_commit()
     return sorted(new_days, key=lambda x: x.date)
 
 
@@ -313,13 +307,8 @@ def import_calendar(cal: TextIOWrapper):
                 all_events.append(hday)
                 curr_event = dict()
                 in_event = False
-    try:
-        db.session.add_all(all_events)
-        db.session.commit()
-    except SQLAlchemyError as e:
-        breakpoint()
-        db.session.rollback()
-        raise e
+    db.session.add_all(all_events)
+    db.try_commit(True)
     logging.info(f"Added {len(all_events)} new holidays to table")
     pass
 
@@ -337,14 +326,74 @@ def flex_date(dt: datetime.date, flex_val: bool = True) -> Timesheet:
         day = Timesheet(date=dt)
     day.is_flex = flex_val  # type: ignore
     db.session.add(day)
-    try:
-        db.session.commit()
-    except SQLAlchemyError as e:
-        breakpoint()
-        db.session.rollback()
-        raise e
+    db.try_commit(True)
     logging.info(f"Marked {dt} is_flex={flex_val}")
     return day
+
+
+@ensure_db(db)
+def get_flex_balance(dt: datetime.date) -> FlexBalance:
+    """ returns  """
+    latest: Optional[FlexBalance] = (
+        db.session.query(FlexBalance).order_by(FlexBalance.date.desc()).first()
+    )
+    if latest is None:
+        raise NoData(
+            db.db_file, "flexbalance", "No flex balance data, cannot fetch current balance"
+        )
+    elif latest.date == dt:
+        return latest
+    logs = get_range(latest.date, dt)
+    balance = datetime.timedelta(seconds=latest.seconds)
+    for day in date_range(latest.date, TODAY, False):
+        work_len = datetime.timedelta(0)
+        if logs and logs[0].date == day:
+            day_log = logs.pop(0)
+            if day_log.is_flex:
+                # assume flexed holiday/weekend is a mistake, but show a warning
+                if not is_workday(day) and not config.work_weekend:
+                    logging.warning(
+                        f"Check timesheet on {day}: marked as flex, but is a weekend or holiday"
+                    )
+                    continue
+            elif day_log.clock_in and day_log.clock_out:
+                work_len = time_difference(day_log.clock_in, day_log.clock_out, True, config)
+        elif not is_workday(day):
+            # no log, not a workday
+            continue
+
+        if is_workday(day):
+            need_len = config.day_length
+        else:
+            need_len = datetime.timedelta(0)
+
+        net = work_len - need_len
+        # breakpoint()
+        logging.debug(f"{day}: work_len={work_len} need_len={need_len} net={net}")
+        logging.debug(f"old balance: {balance} new balance: {balance + net}")
+        balance += net
+    return FlexBalance.from_timedelta(dt, balance)
+
+
+@ensure_db(db)
+def set_flex_balance(
+    dt: datetime.date, bal_dt: datetime.timedelta = None, force: bool = False
+) -> FlexBalance:
+    existing: Optional[FlexBalance] = (
+        db.session.query(FlexBalance).filter(FlexBalance.date == dt).first()
+    )
+    if existing and force is False:
+        if not get_resp(f"Overwrite existing flex balance of {existing.hours} on {existing.date}?"):
+            exit(1)
+
+    if bal_dt is None:
+        bal = get_flex_balance(dt)
+    else:
+        bal = FlexBalance(date=dt, seconds=bal_dt.seconds)
+
+    db.session.add(bal)
+    db.try_commit(True)
+    return bal
 
 
 ### internal stuff
@@ -485,12 +534,16 @@ def is_holiday(day: datetime.date) -> bool:
     return db.session.query(Holiday).filter(Holiday.date == day).count() > 0
 
 
+def is_workday(day: datetime.date) -> bool:
+    return day.weekday() < 5 and not is_holiday(day)
+
+
 def get_day(day: datetime.date, missing_okay: bool = True) -> Optional[Timesheet]:
     day_log: Optional[Timesheet] = (
         db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
     )
     if day_log is None and not missing_okay:
-        raise NoData(db.db_file, day)
+        raise NoData(db.db_file, f"timesheet.date={day}")
     return day_log
 
 
@@ -530,8 +583,8 @@ def add_row(
     if clock_in is None and clock_out is None:
         raise ValueError("You must specify at least one time to create a new timesheet entry")
     new_row = Timesheet(date=day, clock_in=clock_in, clock_out=clock_out, is_flex=is_flex)
+    db.session.add(new_row)
     try:
-        db.session.add(new_row)
         db.session.commit()
     except IntegrityError as e:
         db.session.rollback()
@@ -569,13 +622,7 @@ def update_row(
         logging.error(f"Not overwriting existing log{plural} on {day} for {info_str}")
         exit(1)
 
-    try:
-        db.session.add(row)
-        db.session.commit()
-    except SQLAlchemyError as e:
-        # something might happen?
-        breakpoint()
-        db.session.rollback()
-        raise e
+    db.session.add(row)
+    db.try_commit(True)
 
     return row

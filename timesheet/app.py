@@ -87,14 +87,17 @@ def print_range(
             print("=" * 10)
             for curr_day in date_range(from_day, until_day, False):
                 if curr_day in logs_by_day:
-                    if logs_by_day[curr_day].log(log_type).time is None:
-                        print()
-                    else:
+                    day_log = logs_by_day[curr_day].log(log_type)
+                    if isinstance(day_log.time, datetime.time):
                         rounded = round_time(
-                            logs_by_day[curr_day].log(log_type).time,
+                            day_log.time,
                             config.round_threshold,
                         )
                         print(f"{rounded.hour:02}\t{rounded.minute:02}")
+                    elif day_log.time is None:
+                        print()
+                    else:
+                        print("Af")
                 elif curr_day.weekday() > 4 or is_holiday(curr_day):
                     print()
                 else:
@@ -321,6 +324,29 @@ def import_calendar(cal: TextIOWrapper):
     pass
 
 
+@ensure_db(db)
+def flex_date(dt: datetime.date) -> Timesheet:
+    day = get_day(dt)
+    if day:
+        if not day.is_flex:
+            logging.warning(f"Existing, non-flex data on {dt} will be ignored")
+        else:
+            logging.info(f"{dt} already marked as flex")
+            return day
+    else:
+        day = Timesheet(date=dt)
+    day.is_flex = True  # type: ignore
+    db.session.add(day)
+    try:
+        db.session.commit()
+    except SQLAlchemyError as e:
+        breakpoint()
+        db.session.rollback()
+        raise e
+    logging.info(f"Marked {dt} as flexed")
+    return day
+
+
 ### internal stuff
 
 
@@ -459,8 +485,10 @@ def is_holiday(day: datetime.date) -> bool:
     return db.session.query(Holiday).filter(Holiday.date == day).count() > 0
 
 
-def get_day(day: datetime.date, missing_okay: bool = True) -> Timesheet:
-    day_log = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
+def get_day(day: datetime.date, missing_okay: bool = True) -> Optional[Timesheet]:
+    day_log: Optional[Timesheet] = (
+        db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
+    )
     if day_log is None and not missing_okay:
         raise NoData(db.db_file, day)
     return day_log

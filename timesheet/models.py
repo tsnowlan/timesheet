@@ -2,7 +2,7 @@ from sqlalchemy import Boolean, Column, Date, MetaData, Numeric, String, Time
 from sqlalchemy.ext.declarative.api import declarative_base
 
 from .enums import LogType
-from .util import Log
+from .util import Log, log_date
 
 md: MetaData = MetaData()
 Base = declarative_base()
@@ -21,10 +21,19 @@ class Timesheet(Base):
         return f"<Timesheet date={self.date} clock_in={self.clock_in} clock_out={self.clock_out} flex={self.is_flex}>"
 
     def __str__(self) -> str:
-        return f"{self.date}\t{self.clock_in}\t{self.clock_out}"
+        ts_str = f"{self.date}\t"
+        if self.is_flex:
+            ts_str += "flexed"
+        else:
+            ts_str += f"{self.clock_in}\t{self.clock_out}"
+        return ts_str
 
     def log(self, log_type: LogType) -> Log:
-        return Log(self.date, log_type, getattr(self, log_type.value, None))
+        if self.is_flex:
+            log_val = "Af"
+        else:
+            log_val = getattr(self, log_type.value, None)
+        return Log(self.date, log_type, log_val)
 
 
 class Holiday(Base):

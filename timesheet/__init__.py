@@ -13,14 +13,15 @@ from .app import (
     config as app_config,
     db,
     edit_log,
+    flex_date,
     guess_day,
     import_calendar,
     print_range,
 )
-from .constants import DATETIME_FORMATS, ROW_HEADER, TODAY
+from .constants import DATE_FORMATS, DATETIME_FORMATS, ROW_HEADER, TODAY
 from .enums import AllTargets, AllTargetsType, LogType
 from .exceptions import ExistingData, NoData
-from .util import init_logs, str2enum, target2dt, validate_datetime
+from .util import init_logs, dt2date, str2enum, target2dt, validate_datetime
 
 
 @click.command(help="clock in and out")
@@ -181,6 +182,39 @@ def run_cli(
     db.connect(app_config.db_file)
 
 
+@click.group(help="view and manage flextime")
+def flex():
+    pass
+
+
+@flex.command(help="show current flex time balance")
+def balance():
+    raise NotImplemented
+
+
+@flex.command(help="set flex balance in hours at a given date")
+@click.argument(
+    "date", metavar="DATE", type=click.DateTime(DATE_FORMATS), callback=dt2date, required=True
+)
+@click.argument("balance", type=float, required=True)
+def set_balance(date: datetime.date, balance: float):
+    raise NotImplemented
+
+
+@flex.command("day", help="mark the given date as flexed")
+@click.argument(
+    "date",
+    metavar="DATE",
+    type=click.DateTime(DATE_FORMATS),
+    callback=dt2date,
+    default=str(TODAY),
+    required=True,
+)
+def flex_day(date: datetime.date):
+    new_day = flex_date(date)
+    print(new_day)
+
+
 def update_config(
     config_file: Optional[Path] = None,
     db_file: Optional[Path] = None,
@@ -206,6 +240,7 @@ run_cli.add_command(print_logs, "print")
 run_cli.add_command(edit)
 run_cli.add_command(backfill)
 run_cli.add_command(update_holidays)
+run_cli.add_command(flex)
 
 
 def main() -> None:

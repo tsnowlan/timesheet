@@ -325,17 +325,17 @@ def import_calendar(cal: TextIOWrapper):
 
 
 @ensure_db(db)
-def flex_date(dt: datetime.date) -> Timesheet:
+def flex_date(dt: datetime.date, flex_val: bool = True) -> Timesheet:
     day = get_day(dt)
     if day:
-        if not day.is_flex:
-            logging.warning(f"Existing, non-flex data on {dt} will be ignored")
-        else:
-            logging.info(f"{dt} already marked as flex")
+        if flex_val == day.is_flex:
+            logging.info(f"{dt} already has is_flex={flex_val}")
             return day
+        elif flex_val:
+            logging.warning(f"Existing, non-flex data on {dt} will be ignored")
     else:
         day = Timesheet(date=dt)
-    day.is_flex = True  # type: ignore
+    day.is_flex = flex_val  # type: ignore
     db.session.add(day)
     try:
         db.session.commit()
@@ -343,7 +343,7 @@ def flex_date(dt: datetime.date) -> Timesheet:
         breakpoint()
         db.session.rollback()
         raise e
-    logging.info(f"Marked {dt} as flexed")
+    logging.info(f"Marked {dt} is_flex={flex_val}")
     return day
 
 

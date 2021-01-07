@@ -208,11 +208,12 @@ def set_balance(date: datetime.date, balance: float):
     type=click.DateTime(DATE_FORMATS),
     callback=dt2date,
     default=str(TODAY),
-    required=True,
 )
-def flex_day(date: datetime.date):
-    new_day = flex_date(date)
-    print(new_day)
+@click.option("--unflex", "flex_val", flag_value=False, help="unmark a date as flexed")
+@click.option("--flex", "flex_val", flag_value=True, default=True, hidden=True)
+def flex_day(date: datetime.date, flex_val: bool):
+    new_day = flex_date(date, flex_val)
+    print(f"new day:\n{new_day}")
 
 
 def update_config(

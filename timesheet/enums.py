@@ -1,5 +1,5 @@
 from enum import Enum, IntEnum, auto
-from typing import Any, Union
+from typing import Any, List, Union
 
 # enums for nicer type checking of parameters and such
 # unfortunately, the typeshed stubs can't process functional enum declarations, so need to have
@@ -8,7 +8,7 @@ from typing import Any, Union
 
 class NamedEnum(str, Enum):
     @staticmethod
-    def _generate_next_value_(name: str, start: int, count: int, last_values: list[Any]) -> str:
+    def _generate_next_value_(name: str, start: int, count: int, last_values: List[Any]) -> str:
         return name
 
 
@@ -90,4 +90,4 @@ class TargetPeriod(NamedEnum):
 
 
 AllTargetsType = Union[TargetDay, TargetPeriod]
-AllTargets: list[str] = [t.name for t in TargetDay] + [t.name for t in TargetPeriod]
+AllTargets: List[str] = [t.name for t in TargetDay] + [t.name for t in TargetPeriod]

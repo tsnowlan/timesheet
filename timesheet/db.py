@@ -1,9 +1,11 @@
+import logging
 from pathlib import Path
 from typing import Optional, Union
 
 from sqlalchemy import MetaData, create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 from .models import Base
@@ -36,7 +38,7 @@ class DB:
             assert (
                 self.engine_file == self.db_file
             ), f"Active database file {self.engine_file} does not match db_file {self.db_file}"
-            assert self.session.is_active, "Dead session"  # type: ignore
+            assert self.session.is_active, "Dead session"
 
     @property
     def engine_file(self) -> Union[Path, None]:
@@ -54,7 +56,10 @@ class DB:
 
         # don't clobber existing connections / settings
         if all([db_file, hasattr(self, "db_file")]):
-            if (self.db_file and db_file != self.db_file) or (self.engine_file and 5):
+            if (self.db_file and db_file != self.db_file) or (
+                self.engine_file and self.engine_file != db_file
+            ):
+                breakpoint()
                 raise ValueError("Cannot overwrite existing db_file, create a new DB object")
         elif getattr(self, "session", None):
             # use existing session, maybe give a warning?
@@ -64,6 +69,19 @@ class DB:
 
         assert self.db_file, f"self.db_file still unset: received db_file={db_file}"
         self._init_session(echo_sql)
+
+    def try_commit(self, do_breakpoint: bool = False):
+        """ try/except session.commit with optional breakpoint for SQLAlchemyErrors """
+        try:
+            self.session.commit()
+        except SQLAlchemyError as e:
+            if do_breakpoint:
+                logging.exception(e)
+                breakpoint()
+                self.session.rollback()
+            else:
+                self.session.rollback()
+                raise e
 
     def create_db(self) -> None:
         self.metadata.create_all(self.engine)

@@ -1,7 +1,7 @@
 import datetime
 import logging
 from pathlib import Path
-from typing import Iterable, NamedTuple, Optional, Union, overload
+from typing import Iterable, Literal, NamedTuple, Optional, Union, overload
 
 import click
 from click.exceptions import BadParameter
@@ -56,7 +56,9 @@ def log_date(log_line: str) -> datetime.datetime:
     return dt
 
 
-def round_time(time_obj: datetime.time, thresh: int, to_nearest: int = 15) -> datetime.time:
+def round_time(time_obj: datetime.time, thresh: int = None, to_nearest: int = 15) -> datetime.time:
+    if thresh is None:
+        thresh = to_nearest // 2
     mod = time_obj.minute % to_nearest
     if mod == 0:
         return time_obj
@@ -69,6 +71,16 @@ def round_time(time_obj: datetime.time, thresh: int, to_nearest: int = 15) -> da
     # throwaway dt object so we can use timedeltas for cleaner time math
     temp_dt = datetime.datetime.combine(TODAY, time_obj) + rounded_time
     return temp_dt.time()
+
+
+def dt2date(
+    ctx: click.Context,
+    param: click.Parameter,
+    value: Optional[datetime.datetime],
+) -> Optional[datetime.date]:
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    return value
 
 
 def str2enum(
@@ -124,6 +136,20 @@ def target2dt(
         return (min_date, max_date)
 
 
+def time_difference(
+    t1: datetime.time, t2: datetime.time, rounded: bool = False, conf=None
+) -> datetime.timedelta:
+    # conf: Optional[timesheet.config.Config]
+    if rounded:
+        thresh = conf.round_threshold if conf else None
+        t1 = round_time(t1, thresh)
+        t2 = round_time(t2, thresh)
+    return abs(
+        datetime.datetime.strptime(str(t1), "%H:%M:%S")
+        - datetime.datetime.strptime(str(t2), "%H:%M:%S")
+    )
+
+
 def validate_datetime(
     ctx: click.Context, param: click.Parameter, dt: datetime.datetime
 ) -> datetime.datetime:
@@ -137,7 +163,7 @@ def validate_datetime(
 class Log(NamedTuple):
     day: datetime.date
     type: LogType
-    time: datetime.time
+    time: Union[datetime.time, Literal["Af"]]
 
 
 class AuthLog(NamedTuple):

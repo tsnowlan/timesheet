@@ -8,19 +8,22 @@ from typing import Optional
 import click
 
 from .app import (
-    add_log,
-    backfill_days,
     config as app_config,
     db,
+    add_log,
+    backfill_days,
     edit_log,
+    flex_date,
+    get_flex_balance,
     guess_day,
     import_calendar,
     print_range,
+    set_flex_balance,
 )
-from .constants import DATETIME_FORMATS, ROW_HEADER, TODAY
+from .constants import DATE_FORMATS, DATETIME_FORMATS, ROW_HEADER, TODAY
 from .enums import AllTargets, AllTargetsType, LogType
 from .exceptions import ExistingData, NoData
-from .util import init_logs, str2enum, target2dt, validate_datetime
+from .util import dt2date, init_logs, str2enum, target2dt, validate_datetime
 
 
 @click.command(help="clock in and out")
@@ -35,7 +38,7 @@ from .util import init_logs, str2enum, target2dt, validate_datetime
 @click.argument(
     "log_time",
     metavar="[TIME_STRING]",
-    default=f"{datetime.datetime.now()}",
+    default=str(datetime.datetime.now()),
     type=click.DateTime(DATETIME_FORMATS),
     callback=validate_datetime,
 )
@@ -55,8 +58,7 @@ def clock(
     config_file: Optional[Path],
     db_file: Optional[Path],
 ) -> None:
-    update_config(config_file, db_file)
-    db.connect(app_config.db_file)
+    init_app(config_file, db_file)
 
     try:
         if guess:
@@ -67,17 +69,21 @@ def clock(
     except (ExistingData, NoData) as e:
         logging.error(e)
         exit(1)
-    logging.info(f"Successfully clocked {log_type.name.lower()} on {new_log.day} at {new_log.time}")
+    print(f"Successfully clocked {log_type.name.lower()} on {new_log.day} at {new_log.time}")
 
 
-@click.command(help="print out timesheet entries for the given date(s)")
+@click.command(
+    "print",
+    short_help="print timesheet entries",
+    help="prints out timesheet entries for the given date or range of dates",
+)
 @click.argument(
     "target",
     metavar="< today | month | $month_name | ... >",
     default="today",
     callback=str2enum,
 )
-@click.option("--export", is_flag=True, help=f"print in a form easy to paste into the timesheet")
+@click.option("--export", is_flag=True, help=f"print in a form easy to paste into the spreadsheet")
 def print_logs(target: AllTargetsType, export: bool) -> None:
     print_format = "export" if export else "print"
     min_date, max_date = target2dt(target)
@@ -171,41 +177,109 @@ def update_holidays(cal: TextIOWrapper):
     envvar="TIMESHEET_CONFIG",
     help="File with custom config settings",
 )
-@click.option("--debug", is_flag=True)
+@click.option("--verbose", "log_level", flag_value=logging.INFO, help="Set logging to info")
+@click.option("--debug", "log_level", flag_value=logging.DEBUG, help="Set logging to debug")
 def run_cli(
     db_file: Optional[Path],
     config_file: Optional[Path],
-    debug: bool,
+    log_level: int = logging.WARNING,
 ) -> None:
-    update_config(config_file, db_file, debug)
-    db.connect(app_config.db_file)
+    init_app(config_file, db_file, log_level)
 
 
-def update_config(
-    config_file: Optional[Path] = None,
-    db_file: Optional[Path] = None,
-    debug: bool = False,
+@click.group(help="view and manage flex balance")
+def balance():
+    pass
+
+
+@balance.command("show", help=f"show flex balance for the given date (default: {TODAY})")
+@click.argument(
+    "date",
+    metavar="[DATE]",
+    type=click.DateTime(DATE_FORMATS),
+    callback=dt2date,
+    default=str(TODAY),
+)
+def get_balance(date: datetime.date):
+    try:
+        current_balance, _ = get_flex_balance(date)
+    except NoData as e:
+        print(e)
+        exit(1)
+    when = "Current" if date == TODAY else str(date)
+    print(f"{when} balance: {current_balance.hours}h")
+
+
+@balance.command("update", help="update flex balance table to the current day")
+@click.option("--force", is_flag=True, help="overwrite any existing balance for today")
+def update_balance():
+    try:
+        new_balance = set_flex_balance(TODAY)
+    except NoData as e:
+        print(e)
+        exit(1)
+    print(f"New flex balance: {new_balance.hours}h")
+
+
+@click.command("set", help="set flex balance in hours at a given date")
+@click.argument(
+    "date", metavar="DATE", type=click.DateTime(DATE_FORMATS), callback=dt2date, required=True
+)
+@click.argument("balance", type=float, required=True)
+@click.option("--force", is_flag=True, help="overwrite any existing balance on the given day")
+def set_balance(date: datetime.date, balance: float, force: bool):
+    balance_dt = datetime.timedelta(hours=balance)
+    try:
+        new_balance = set_flex_balance(date, balance_dt, force)
+    except NoData as e:
+        print(e)
+        exit(1)
+    print(f"New flex balance: {new_balance.hours}h")
+
+
+@click.command(
+    "flex",
+    short_help="mark a day as flexed",
+    help=f"mark the given date as flexed (default: {TODAY})",
+)
+@click.argument(
+    "date",
+    metavar="[DATE]",
+    type=click.DateTime(DATE_FORMATS),
+    callback=dt2date,
+    default=str(TODAY),
+)
+@click.option("--unflex", "flex_val", flag_value=False, help="unmark a date as flexed")
+@click.option("--flex", "flex_val", flag_value=True, default=True, hidden=True)
+def flex_day(date: datetime.date, flex_val: bool):
+    new_day = flex_date(date, flex_val)
+    print(f"new day:\n{new_day}")
+
+
+def init_app(
+    config_file: Path = None,
+    db_file: Path = None,
+    log_level: int = logging.WARNING,
 ) -> None:
     """ Updates config from cli options """
     if config_file:
         app_config.from_file(config_file)
     if db_file and db_file != app_config.db_file:
         app_config.db_file = db_file
-    if debug:
-        app_config.debug = debug
-    if app_config.debug:
-        init_logs(log_level=logging.DEBUG)
-    else:
-        init_logs()
+    app_config.debug = log_level == logging.DEBUG
+    init_logs(log_level)
+    db.connect(app_config.db_file)
 
 
 ####
 
 run_cli.add_command(clock)
-run_cli.add_command(print_logs, "print")
+run_cli.add_command(print_logs)
 run_cli.add_command(edit)
 run_cli.add_command(backfill)
 run_cli.add_command(update_holidays)
+run_cli.add_command(flex_day)
+run_cli.add_command(balance)
 
 
 def main() -> None:

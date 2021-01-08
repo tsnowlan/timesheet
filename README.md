@@ -14,11 +14,12 @@ Python typing magic is used, specifically for `pyright`/`pylance` in [VS Code](h
 - Allows using a "standard" day on backfill for days without log entries
 - Tracks flex time
   - set an initial balance
-    - _e.g.,_ `timesheet flex set-balance 2021-01-01 20`
+    - _e.g.,_ `timesheet balance set 2021-01-01 20`
     - balance is hours available at the beginning of the day
   - mark full days flexed
-    - `timesheet flex day`, `timesheet flex day 2021-01-16`
-  - flex hours are extracted automatically from timesheet logs
+    - flex current day: `timesheet flex` 
+    - unflex a day: `timesheet flex --unflex 2021-01-05`
+  - flexed hours are extracted automatically from timesheet logs
   - warns if empty work days are found when calculating the balance
 - Holiday awareness by importing a calendar `.ics` file
 

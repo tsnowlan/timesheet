@@ -271,7 +271,7 @@ def get_balance(date: datetime.date):
 ###############
 
 
-@click.command("set", help="set flex balance in hours at a given date")
+@balance.command("set", help="set flex balance in hours at a given date")
 @click.argument(
     "date", metavar="DATE", type=click.DateTime(DATE_FORMATS), callback=dt2date, required=True
 )
@@ -330,9 +330,9 @@ def flex_day(date: datetime.date, flex_val: bool):
 ###############
 
 run_cli.add_command(clock)
-run_cli.add_command(print_logs)
-run_cli.add_command(edit)
 run_cli.add_command(backfill)
+run_cli.add_command(edit)
+run_cli.add_command(print_logs)
 run_cli.add_command(update_holidays)
-run_cli.add_command(flex_day)
 run_cli.add_command(balance)
+run_cli.add_command(flex_day)

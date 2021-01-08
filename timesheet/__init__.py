@@ -1,5 +1,6 @@
-from pathlib import Path
+from .cli import run_cli
+from .version import __version__
 
-version_file = Path(__file__).parent / "VERSION"
-__version__ = version_file.read_text().strip()
-version = __version__
+
+def main():
+    run_cli(obj={})

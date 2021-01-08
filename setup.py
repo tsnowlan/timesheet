@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import timesheet
 from setuptools import setup
 
 setup(
@@ -32,7 +31,7 @@ setup(
     entry_points={
         "console_scripts": [
             "clock = timesheet.cli:clock",
-            "timesheet = timesheet.cli:main",
+            "timesheet = timesheet:main",
         ]
     },
 )

@@ -5,7 +5,7 @@ from collections import defaultdict
 from functools import wraps
 from io import TextIOWrapper
 from pathlib import Path
-from typing import Callable, DefaultDict, Dict, Iterable, Literal, Optional, Tuple
+from typing import Callable, DefaultDict, Dict, Iterable, List, Literal, Optional, Tuple
 
 from sqlalchemy.exc import IntegrityError
 
@@ -332,8 +332,9 @@ def flex_date(dt: datetime.date, flex_val: bool = True) -> Timesheet:
 
 
 @ensure_db(db)
-def get_flex_balance(dt: datetime.date) -> FlexBalance:
-    """ returns  """
+def get_flex_balance(dt: datetime.date) -> Tuple[FlexBalance, List[datetime.date]]:
+    """ returns flex balance for the given day and list of days missing entries (if any) """
+    missing_logs = []
     latest: Optional[FlexBalance] = (
         db.session.query(FlexBalance).order_by(FlexBalance.date.desc()).first()
     )
@@ -342,10 +343,11 @@ def get_flex_balance(dt: datetime.date) -> FlexBalance:
             db.db_file, "flexbalance", "No flex balance data, cannot fetch current balance"
         )
     elif latest.date == dt:
-        return latest
+        return latest, missing_logs
+
     logs = get_range(latest.date, dt)
     balance = datetime.timedelta(seconds=latest.seconds)
-    for day in date_range(latest.date, TODAY, False):
+    for day in date_range(latest.date, dt, False):
         work_len = datetime.timedelta(0)
         if logs and logs[0].date == day:
             day_log = logs.pop(0)
@@ -361,6 +363,12 @@ def get_flex_balance(dt: datetime.date) -> FlexBalance:
         elif not is_workday(day):
             # no log, not a workday
             continue
+        else:
+            # it's a work day, but no timesheet entry found. ignored by balance calcs.
+            # should be explicitly flexed or have logs added
+            logging.info(f"{day} missing timesheet data, skipping")
+            missing_logs.append(day)
+            continue
 
         if is_workday(day):
             need_len = config.day_length
@@ -372,7 +380,12 @@ def get_flex_balance(dt: datetime.date) -> FlexBalance:
         logging.debug(f"{day}: work_len={work_len} need_len={need_len} net={net}")
         logging.debug(f"old balance: {balance} new balance: {balance + net}")
         balance += net
-    return FlexBalance.from_timedelta(dt, balance)
+    if missing_logs:
+        logging.warning(
+            f"Found {len(missing_logs)} days with missing data: {', '.join([str(d) for d in missing_logs])}"
+        )
+        logging.warning(f"FlexBalance may be inaccurate")
+    return FlexBalance.from_timedelta(dt, balance), missing_logs
 
 
 @ensure_db(db)
@@ -387,7 +400,10 @@ def set_flex_balance(
             exit(1)
 
     if bal_dt is None:
-        bal = get_flex_balance(dt)
+        bal, missing_days = get_flex_balance(dt)
+        if missing_days:
+            missing_str = ", ".join([str(d) for d in missing_days])
+            raise NoData(db.db_file, missing_str)
     else:
         bal = FlexBalance(date=dt, seconds=bal_dt.seconds)
 

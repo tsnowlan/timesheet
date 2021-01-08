@@ -24,11 +24,11 @@ class Timesheet(Base):
         return f"<Timesheet date={self.date} clock_in={self.clock_in} clock_out={self.clock_out} flex={self.is_flex}>"
 
     def __str__(self) -> str:
-        ts_str = f"{self.date}\t"
         if self.is_flex:
-            ts_str += "flexed"
+            times = ["flexed", "flexed"]
         else:
-            ts_str += f"{self.clock_in}\t{self.clock_out}"
+            times = [self.clock_in, self.clock_out]
+        ts_str = f"{self.date}\t{str(times[0]): <8}\t{str(times[1]): <8}"
         return ts_str
 
     def log(self, log_type: LogType) -> Log:

@@ -38,7 +38,7 @@ class DB:
             assert (
                 self.engine_file == self.db_file
             ), f"Active database file {self.engine_file} does not match db_file {self.db_file}"
-            assert self.session.is_active, "Dead session"  # type: ignore
+            assert self.session.is_active, "Dead session"
 
     @property
     def engine_file(self) -> Union[Path, None]:
@@ -56,7 +56,10 @@ class DB:
 
         # don't clobber existing connections / settings
         if all([db_file, hasattr(self, "db_file")]):
-            if (self.db_file and db_file != self.db_file) or (self.engine_file and 5):
+            if (self.db_file and db_file != self.db_file) or (
+                self.engine_file and self.engine_file != db_file
+            ):
+                breakpoint()
                 raise ValueError("Cannot overwrite existing db_file, create a new DB object")
         elif getattr(self, "session", None):
             # use existing session, maybe give a warning?

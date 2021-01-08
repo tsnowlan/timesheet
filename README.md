@@ -19,6 +19,7 @@ Python typing magic is used, specifically for `pyright`/`pylance` in [VS Code](h
   - mark full days flexed
     - `timesheet flex day`, `timesheet flex day 2021-01-16`
   - flex hours are extracted automatically from timesheet logs
+  - warns if empty work days are found when calculating the balance
 - Holiday awareness by importing a calendar `.ics` file
 
 ## Installation

@@ -24,26 +24,16 @@ from .constants import DATE_FORMATS, DATETIME_FORMATS, ROW_HEADER, TODAY
 from .enums import AllTargets, AllTargetsType, LogType
 from .exceptions import ExistingData, NoData
 from .util import dt2date, init_logs, str2enum, target2dt, validate_datetime
+from .version import get_version
 
 
-def init_app(
-    config_file: Path = None,
-    db_file: Path = None,
-    log_level: int = logging.WARNING,
-) -> None:
-    """ Updates config from cli options """
-    if config_file:
-        app_config.from_file(config_file)
-    if db_file and db_file != app_config.db_file:
-        app_config.db_file = db_file
-    app_config.debug = log_level == logging.DEBUG
-    init_logs(log_level)
-    db.connect(app_config.db_file)
+##########################################################################################
+#                                   core functionality                                   #
+##########################################################################################
 
-
-###############
-# timesheet
-###############
+#############
+# timesheet #
+#############
 
 
 @click.group()
@@ -59,8 +49,10 @@ def init_app(
     envvar="TIMESHEET_CONFIG",
     help="File with custom config settings",
 )
-@click.option("--verbose", "log_level", flag_value=logging.INFO, help="Set logging to info")
-@click.option("--debug", "log_level", flag_value=logging.DEBUG, help="Set logging to debug")
+@click.option("-v", "--verbose", "log_level", flag_value=logging.INFO, help="Set logging to info")
+@click.option(
+    "-D", "-vv", "--debug", "log_level", flag_value=logging.DEBUG, help="Set logging to debug"
+)
 def run_cli(
     db_file: Optional[Path],
     config_file: Optional[Path],
@@ -69,10 +61,10 @@ def run_cli(
     init_app(config_file, db_file, log_level)
 
 
-###############
-# clock
-## timesheet clock
-###############
+#####################
+# clock             #
+## timesheet clock ##
+#####################
 
 
 @click.command(help="clock in and out")
@@ -121,9 +113,9 @@ def clock(
     print(f"Successfully clocked {log_type.name.lower()} on {new_log.day} at {new_log.time}")
 
 
-###############
-## timesheet backfill
-###############
+########################
+## timesheet backfill ##
+########################
 
 
 @click.command(help="backfill timesheet logs from system logs")
@@ -170,9 +162,9 @@ def backfill(target: AllTargetsType, use_standard: bool, validate: bool, overwri
         exit(1)
 
 
-###############
-## timesheet edit
-###############
+####################
+## timesheet edit ##
+####################
 
 
 @click.command(help="edit an existing log")
@@ -194,9 +186,9 @@ def edit(log_type: LogType, log_time: datetime.datetime) -> None:
     print(new_log)
 
 
-###############
-## timesheet print
-###############
+#####################
+## timesheet print ##
+#####################
 
 
 @click.command(
@@ -221,9 +213,19 @@ def print_logs(target: AllTargetsType, export: bool) -> None:
         exit(1)
 
 
-###############
-## timesheet update-holidays
-###############
+#######################
+## timesheet version ##
+#######################
+
+
+@run_cli.command("version")
+def show_version():
+    print(get_version(True))
+
+
+###############################
+## timesheet update-holidays ##
+###############################
 
 
 @click.command(help="updates the holidays table")
@@ -233,79 +235,14 @@ def update_holidays(cal: TextIOWrapper):
     import_calendar(cal)
 
 
-###############
-## timesheet balance
-###############
+##########################################################################################
+#                              flextime functionality                                    #
+##########################################################################################
 
 
-@click.group(help="view and manage flex balance")
-def balance():
-    pass
-
-
-###############
-### timesheet balance show
-###############
-
-
-@balance.command("show", help=f"show flex balance for the given date (default: {TODAY})")
-@click.argument(
-    "date",
-    metavar="[DATE]",
-    type=click.DateTime(DATE_FORMATS),
-    callback=dt2date,
-    default=str(TODAY),
-)
-def get_balance(date: datetime.date):
-    try:
-        current_balance, _ = get_flex_balance(date)
-    except NoData as e:
-        print(e)
-        exit(1)
-    when = "Current" if date == TODAY else str(date)
-    print(f"{when} balance: {current_balance.hours}h")
-
-
-###############
-### timesheet balance set
-###############
-
-
-@balance.command("set", help="set flex balance in hours at a given date")
-@click.argument(
-    "date", metavar="DATE", type=click.DateTime(DATE_FORMATS), callback=dt2date, required=True
-)
-@click.argument("balance", type=float, required=True)
-@click.option("--force", is_flag=True, help="overwrite any existing balance on the given day")
-def set_balance(date: datetime.date, balance: float, force: bool):
-    balance_dt = datetime.timedelta(hours=balance)
-    try:
-        new_balance = set_flex_balance(date, balance_dt, force)
-    except NoData as e:
-        print(e)
-        exit(1)
-    print(f"New flex balance: {new_balance.hours}h")
-
-
-###############
-### timesheet balance update
-###############
-
-
-@balance.command("update", help="update flex balance table to the current day")
-@click.option("--force", is_flag=True, help="overwrite any existing balance for today")
-def update_balance():
-    try:
-        new_balance = set_flex_balance(TODAY)
-    except NoData as e:
-        print(e)
-        exit(1)
-    print(f"New flex balance: {new_balance.hours}h")
-
-
-###############
-## timesheet flex
-###############
+####################
+## timesheet flex ##
+####################
 
 
 @click.command(
@@ -327,7 +264,95 @@ def flex_day(date: datetime.date, flex_val: bool):
     print(f"new day:\n{new_day}")
 
 
-###############
+#######################
+## timesheet balance ##
+#######################
+
+
+@click.group(help="view and manage flex balance")
+def balance():
+    pass
+
+
+##############################
+### timesheet balance show ###
+##############################
+
+
+@balance.command("show", help=f"show flex balance for the given date (default: {TODAY})")
+@click.argument(
+    "date",
+    metavar="[DATE]",
+    type=click.DateTime(DATE_FORMATS),
+    callback=dt2date,
+    default=str(TODAY),
+)
+def get_balance(date: datetime.date):
+    try:
+        current_balance, _ = get_flex_balance(date)
+    except NoData as e:
+        print(e)
+        exit(1)
+    when = "Current" if date == TODAY else str(date)
+    print(f"{when} balance: {current_balance.hours}h")
+
+
+#############################
+### timesheet balance set ###
+#############################
+
+
+@balance.command("set", help="set flex balance in hours at a given date")
+@click.argument(
+    "date", metavar="DATE", type=click.DateTime(DATE_FORMATS), callback=dt2date, required=True
+)
+@click.argument("balance", type=float, required=True)
+@click.option("--force", is_flag=True, help="overwrite any existing balance on the given day")
+def set_balance(date: datetime.date, balance: float, force: bool):
+    balance_dt = datetime.timedelta(hours=balance)
+    try:
+        new_balance = set_flex_balance(date, balance_dt, force)
+    except NoData as e:
+        print(e)
+        exit(1)
+    print(f"New flex balance: {new_balance.hours}h")
+
+
+################################
+### timesheet balance update ###
+################################
+
+
+@balance.command("update", help="update flex balance table to the current day")
+@click.option("--force", is_flag=True, help="overwrite any existing balance for today")
+def update_balance():
+    try:
+        new_balance = set_flex_balance(TODAY)
+    except NoData as e:
+        print(e)
+        exit(1)
+    print(f"New flex balance: {new_balance.hours}h")
+
+
+##########################################################################################
+#                                        internal                                        #
+##########################################################################################
+
+
+def init_app(
+    config_file: Path = None,
+    db_file: Path = None,
+    log_level: int = logging.WARNING,
+) -> None:
+    """ Updates config from cli options """
+    if config_file:
+        app_config.from_file(config_file)
+    if db_file and db_file != app_config.db_file:
+        app_config.db_file = db_file
+    app_config.debug = log_level == logging.DEBUG
+    init_logs(log_level)
+    db.connect(app_config.db_file)
+
 
 run_cli.add_command(clock)
 run_cli.add_command(backfill)

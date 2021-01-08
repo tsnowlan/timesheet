@@ -1,13 +1,15 @@
+#!/usr/bin/env python3
 from setuptools import setup
 
 setup(
     name="timesheet",
-    version="v1.0.0",
+    version_config=True,
     install_requires=[
         "click>=7.1",
         "sqlalchemy>=1.3",
     ],
     python_requires=">=3.9",
+    setup_requires=["setuptools-git-versioning"],
     extras_require={
         "dev": [
             "black>=20.8b1",

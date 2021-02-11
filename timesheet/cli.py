@@ -36,7 +36,7 @@ from .version import get_version
 #############
 
 
-@click.group()
+@click.group(__package__, invoke_without_command=True)
 @click.option(
     "-d",
     "--db-file",
@@ -53,11 +53,18 @@ from .version import get_version
 @click.option(
     "-D", "-vv", "--debug", "log_level", flag_value=logging.DEBUG, help="Set logging to debug"
 )
+@click.option("-V", "--version", "print_version", is_flag=True)
+@click.pass_context
 def run_cli(
+    ctx: click.Context,
     db_file: Optional[Path],
     config_file: Optional[Path],
+    print_version: bool,
     log_level: int = logging.WARNING,
 ) -> None:
+    if print_version:
+        print(get_version(True))
+        exit()
     init_app(config_file, db_file, log_level)
 
 
@@ -211,16 +218,6 @@ def print_logs(target: AllTargetsType, export: bool) -> None:
     except NoData as e:
         logging.error(e)
         exit(1)
-
-
-#######################
-## timesheet version ##
-#######################
-
-
-@run_cli.command("version")
-def show_version():
-    print(get_version(True))
 
 
 ###############################

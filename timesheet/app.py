@@ -72,6 +72,7 @@ def print_range(
         from_day = sorted(logs_by_day.keys())[0]
     if until_day is None or until_day > TOMORROW:
         until_day = TOMORROW
+    logging.debug(f"printing data from {from_day} until {until_day}")
 
     if print_format == "print":
         default_time = "None"
@@ -141,7 +142,10 @@ def guess_day(
 
     logins = list()
     logouts = list()
-    for logfile in get_logs():
+    logfiles = get_logs()
+    logging.debug(f"Found log files: {', '.join([str(s) for s in logfiles])}")
+    for logfile in logfiles:
+        logging.info(f"checking {logfile} for activity")
         log_activity = get_activity(logfile, day, clock_in, clock_out)
         if len(log_activity) == 0:
             continue
@@ -196,6 +200,7 @@ def backfill_days(
     Replacing existing data requires validate=True or overwrite=True
     """
     idx = index_logs()
+    logging.debug(f"got indexed logs {idx}")
     if len(idx) == 0:
         err = RuntimeError(f"Unable to read auth logs, check permission and log location")
         if use_standard:
@@ -213,25 +218,28 @@ def backfill_days(
     for authlog in idx:
         # target range: [from_day, until_day)
         # log dates: [min_date, max_date]
-        if (from_day >= authlog.min_date and from_day <= authlog.max_date) or (
-            from_day < authlog.min_date and until_day > authlog.min_date
+        logging.debug(f"Checking {authlog.file} for activity")
+        if (from_day <= authlog.min_date < until_day) or (
+            from_day <= authlog.max_date <= until_day
         ):
             log_activity = get_activity(authlog.file, log_in=True, log_out=True)
             for log_day in log_activity:
                 # skip any days outside of range and weekends/holidays
-                if log_day < from_day or log_day >= until_day or not is_workday(log_day):
+                if log_day < from_day or log_day >= until_day or is_holiday(log_day):
                     continue
                 if log_day in all_activity:
+                    logging.debug(f"extending new activity for {log_day}")
                     for lt in LogType:
                         all_activity[log_day][lt].extend(log_activity[log_day][lt])
                 else:
+                    logging.debug(f"adding new activity for {log_day}")
                     all_activity[log_day] = log_activity[log_day]
 
     new_days: list[Timesheet] = []
     AuditRow = Tuple[Timesheet, Tuple[Optional[datetime.time], Optional[datetime.time]]]
     audit_list: list[AuditRow] = list()
-    # for a_day, activity in all_activity.items():
     for a_day in date_range(from_day, until_day):
+        logging.debug(f"checking for activity from {a_day}")
         curr_row = get_day(a_day)
         if use_standard:
             clock_in = config.standard_start
@@ -241,6 +249,7 @@ def backfill_days(
             clock_out = None
 
         if a_day in all_activity:
+            logging.debug(f"found activity on {a_day}")
             # get earliest login
             if all_activity[a_day][LogType.IN]:
                 clock_in = sorted(all_activity[a_day][LogType.IN])[0]
@@ -253,6 +262,7 @@ def backfill_days(
             continue
 
         if curr_row:
+            logging.debug(f"updating existing record {curr_row}")
             new_times = (
                 clock_in if clock_in and clock_in != curr_row.clock_in else None,
                 clock_out if clock_out and clock_out != curr_row.clock_out else None,
@@ -261,7 +271,11 @@ def backfill_days(
                 audit_list.append((curr_row, new_times))
         else:
             new_row = Timesheet(date=a_day, clock_in=clock_in, clock_out=clock_out)
-            new_days.append(new_row)
+            logging.debug(f"creating new record {new_row}")
+            if not validate or get_resp(
+                f"Create new entry on {new_row.date}: clock in {new_row.clock_in}, clock out {new_row.clock_out}"
+            ):
+                new_days.append(new_row)
 
     for (log_obj, updates) in audit_list:
         new_obj = merge_times(log_obj, updates, validate, overwrite)
@@ -480,7 +494,7 @@ def get_resp(msg: str) -> bool:
 
 def get_activity(
     logfile: Path,
-    day: Optional[datetime.date] = None,
+    day: datetime.date = None,
     log_in: bool = True,
     log_out: bool = False,
 ) -> DefaultDict[datetime.date, Dict[LogType, list[datetime.time]]]:
@@ -488,6 +502,7 @@ def get_activity(
         lambda: {LogType.IN: [], LogType.OUT: []}
     )
 
+    logging.debug(f"checking {logfile} for day={day} log_in={log_in} log_out={log_out}")
     open_func = open
     if logfile.name.endswith(".gz"):
         open_func = gzip.open
@@ -505,6 +520,7 @@ def get_activity(
                     break
                 elif line_day < day:
                     continue
+
             if log_in and any([True for login_str in LOGIN_STRS if login_str in log_line]):
                 log_type = LogType.IN
             elif log_out and any([True for logout_str in LOGOUT_STRS if logout_str in log_line]):
@@ -547,11 +563,11 @@ def index_logs() -> list[AuthLog]:
 
 
 def is_holiday(day: datetime.date) -> bool:
-    return db.session.query(Holiday).filter(Holiday.date == day).count() > 0
+    return day.weekday() > 4 or db.session.query(Holiday).filter(Holiday.date == day).count() > 0
 
 
 def is_workday(day: datetime.date) -> bool:
-    return day.weekday() < 5 and not is_holiday(day)
+    return not is_holiday(day)
 
 
 def get_day(day: datetime.date, missing_okay: bool = True) -> Optional[Timesheet]:

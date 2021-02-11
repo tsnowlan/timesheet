@@ -27,6 +27,7 @@ setup(
             "toml>=0.10.2",
         ],
     },
+    include_package_data=True,
     packages=["timesheet"],
     entry_points={
         "console_scripts": [

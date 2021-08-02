@@ -1,7 +1,7 @@
 import datetime
 import logging
 from pathlib import Path
-from typing import Iterable, Literal, NamedTuple, Optional, Union, overload
+from typing import Iterable, Literal, NamedTuple, Optional, Tuple, Union, overload
 
 import click
 from click.exceptions import BadParameter
@@ -108,7 +108,7 @@ def str2enum(
 
 def target2dt(
     target: Union[TargetPeriod, TargetDay],
-) -> tuple[Optional[datetime.date], Optional[datetime.date]]:
+) -> Tuple[Optional[datetime.date], Optional[datetime.date]]:
     if target in (TargetDay.today, TargetDay.yesterday):
         min_date = TODAY if target.value == "today" else YESTERDAY
         max_date = min_date + datetime.timedelta(days=1)
@@ -123,7 +123,7 @@ def target2dt(
         elif target.value == "lastmonth":
             min_date = (TODAY.replace(day=1) - datetime.timedelta(days=1)).replace(day=1)
         else:
-            target_month = Month[target.value]
+            target_month = Month[target.name]
             min_date = TODAY.replace(month=target_month.value, day=1)
             # don't try and see the future
             if min_date > TODAY:
@@ -163,7 +163,7 @@ def validate_datetime(
 class Log(NamedTuple):
     day: datetime.date
     type: LogType
-    time: Union[datetime.time, Literal["Af"]]
+    time: Union[datetime.time, Literal["Af"], Literal["Am"], None]
 
 
 class AuthLog(NamedTuple):

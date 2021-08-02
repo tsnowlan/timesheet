@@ -1,11 +1,10 @@
 import datetime
 import gzip
 import logging
-from collections import defaultdict
 from functools import wraps
 from io import TextIOWrapper
 from pathlib import Path
-from typing import Callable, DefaultDict, Dict, Iterable, List, Literal, Optional, Tuple
+from typing import Callable, Iterable, List, Literal, Optional, Tuple
 
 from sqlalchemy.exc import IntegrityError
 
@@ -100,7 +99,7 @@ def print_range(
                     elif day_log.time is None:
                         print()
                     else:
-                        print("Af")
+                        print(day_log.time)
                 else:
                     print()
             print()
@@ -140,8 +139,8 @@ def guess_day(
     # check for an existing entry
     day_log = get_day(day)
 
-    logins = list()
-    logouts = list()
+    logins: list[datetime.time] = list()
+    logouts: list[datetime.time] = list()
     logfiles = get_logs()
     logging.debug(f"Found log files: {', '.join([str(s) for s in logfiles])}")
     for logfile in logfiles:
@@ -161,29 +160,22 @@ def guess_day(
         exit(1)
 
     # have to do this extra explicitly so typing works
-    row_info = {
-        "day": day,
-        "clock_in": logins[0] if logins else None,
-        "clock_out": logouts[-1] if logouts else None,
-    }
-    if row_info["clock_in"] is None:
-        del row_info["clock_in"]
-    if row_info["clock_out"] is None:
-        del row_info["clock_out"]
+    in_time: Optional[datetime.time] = logins[0] if logins else None
+    out_time: Optional[datetime.time] = logouts[-1] if logouts else None
 
-    if row_info.get("clock_in") and day_log and day_log.clock_in and not overwrite:
-        raise ExistingData((day_log, "clock_in"), row_info["clock_in"])
+    if in_time and day_log and day_log.clock_in and not overwrite:
+        raise ExistingData((day_log, "clock_in"), in_time)
 
-    if row_info.get("clock_out") and day_log and day_log.clock_out and not overwrite:
-        raise ExistingData((day_log, "clock_out"), row_info["clock_out"])
+    if out_time and day_log and day_log.clock_out and not overwrite:
+        raise ExistingData((day_log, "clock_out"), out_time)
 
     # make sure nothing wonky is happening
-    if row_info.get("clock_in") and row_info.get("clock_out"):
-        assert row_info["clock_in"] < row_info["clock_out"]
+    if in_time and out_time:
+        assert in_time < out_time
 
     if day_log:
-        return update_row(**row_info)
-    return add_row(**row_info)
+        return update_row(day, in_time, out_time)
+    return add_row(day, in_time, out_time)
 
 
 @ensure_db(db)
@@ -292,7 +284,7 @@ def backfill_days(
 
 @ensure_db(db)
 def import_calendar(cal: TextIOWrapper):
-    """ Parse an ics file and load into db """
+    """Parse an ics file and load into db"""
     in_event = False
     curr_event = dict()
     all_events = []
@@ -347,7 +339,7 @@ def flex_date(dt: datetime.date, flex_val: bool = True) -> Timesheet:
 
 @ensure_db(db)
 def get_flex_balance(dt: datetime.date) -> Tuple[FlexBalance, List[datetime.date]]:
-    """ returns flex balance for the given day and list of days missing entries (if any) """
+    """returns flex balance for the given day and list of days missing entries (if any)"""
     missing_logs = []
     latest: Optional[FlexBalance] = (
         db.session.query(FlexBalance).order_by(FlexBalance.date.desc()).first()
@@ -426,6 +418,24 @@ def set_flex_balance(
     return bal
 
 
+@ensure_db(db)
+def pto_date(dt: datetime.date, pto_val: bool = True) -> Timesheet:
+    day = get_day(dt)
+    if day:
+        if pto_val == day.is_pto:
+            logging.info(f"{dt} already has is_pto={pto_val}")
+            return day
+        elif pto_val:
+            logging.warning(f"Existing work log data on {dt} will be ignored")
+    else:
+        day = Timesheet(date=dt)
+    day.is_pto = pto_val  # type: ignore
+    db.session.add(day)
+    db.try_commit(True)
+    logging.info(f"Marked {dt} is_pto={pto_val}")
+    return day
+
+
 ### internal stuff
 
 
@@ -497,10 +507,8 @@ def get_activity(
     day: datetime.date = None,
     log_in: bool = True,
     log_out: bool = False,
-) -> DefaultDict[datetime.date, Dict[LogType, list[datetime.time]]]:
-    results: DefaultDict[datetime.date, Dict[LogType, list[datetime.time]]] = defaultdict(
-        lambda: {LogType.IN: [], LogType.OUT: []}
-    )
+) -> dict[datetime.date, dict[LogType, list[datetime.time]]]:
+    results: dict[datetime.date, dict[LogType, list[datetime.time]]] = {}
 
     logging.debug(f"checking {logfile} for day={day} log_in={log_in} log_out={log_out}")
     open_func = open
@@ -527,6 +535,9 @@ def get_activity(
                 log_type = LogType.OUT
             else:
                 continue
+
+            if line_day not in results:
+                results[line_day] = {LogType.IN: [], LogType.OUT: []}
 
             results[line_day][log_type].append(clean_time(line_time))
 
@@ -611,6 +622,7 @@ def add_row(
     clock_in: Optional[datetime.time] = None,
     clock_out: Optional[datetime.time] = None,
     is_flex: bool = False,
+    is_pto: bool = False,
 ) -> Timesheet:
     if clock_in is None and clock_out is None:
         raise ValueError("You must specify at least one time to create a new timesheet entry")

@@ -1,4 +1,4 @@
-from typing import Optional, overload
+from typing import Optional, Union, overload
 import pkg_resources
 from pathlib import Path
 
@@ -19,7 +19,12 @@ def get_version(pretty: bool = True) -> str:
     ...
 
 
+@overload
 def get_version(pretty: bool = False) -> tuple[str, str, str, Optional[str]]:
+    ...
+
+
+def get_version(pretty: bool = False) -> Union[str, tuple[str, str, str, Optional[str]]]:
     if pretty is True:
         return f"{__package__} {__version__}"  # type: ignore
 

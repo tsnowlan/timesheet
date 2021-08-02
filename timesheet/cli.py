@@ -19,6 +19,7 @@ from .app import (
     import_calendar,
     print_range,
     set_flex_balance,
+    pto_date,
 )
 from .constants import DATE_FORMATS, DATETIME_FORMATS, ROW_HEADER, TODAY
 from .enums import AllTargets, AllTargetsType, LogType
@@ -261,6 +262,29 @@ def flex_day(date: datetime.date, flex_val: bool):
     print(f"new day:\n{new_day}")
 
 
+###################
+## timesheet pto ##
+###################
+
+
+@click.command(
+    "pto",
+    short_help="mark a day as PTO",
+    help=f"mark the given date as PTO (default: {TODAY}",
+)
+@click.argument(
+    "date",
+    metavar="[DATE]",
+    type=click.DateTime(DATE_FORMATS),
+    callback=dt2date,
+    default=str(TODAY),
+)
+@click.option("--pto", is_flag=True, default=True, help="mark/unmark a date as flexed")
+def pto_day(date: datetime.date, pto: bool):
+    new_day = pto_date(date, pto)
+    print(f"new day:\n{new_day}")
+
+
 #######################
 ## timesheet balance ##
 #######################
@@ -358,3 +382,4 @@ run_cli.add_command(print_logs)
 run_cli.add_command(update_holidays)
 run_cli.add_command(balance)
 run_cli.add_command(flex_day)
+run_cli.add_command(pto_day)

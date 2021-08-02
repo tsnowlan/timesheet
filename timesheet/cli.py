@@ -41,12 +41,12 @@ from .version import get_version
 @click.option(
     "-d",
     "--db-file",
-    type=click.Path(dir_okay=False, writable=True),
+    type=click.Path(dir_okay=False, writable=True, path_type=Path),
 )
 @click.option(
     "-c",
     "--config-file",
-    type=click.Path(dir_okay=False),
+    type=click.Path(dir_okay=False, path_type=Path),
     envvar="TIMESHEET_CONFIG",
     help="File with custom config settings",
 )
@@ -229,7 +229,7 @@ def print_logs(target: AllTargetsType, export: bool) -> None:
 @click.command(help="updates the holidays table")
 @click.argument("cal", metavar="calendar.ics", type=click.File())
 def update_holidays(cal: TextIOWrapper):
-    """ ics file from e.g., https://www.calendarlabs.com/ical-calendar/holidays/norway-holidays-62/ """
+    """ics file from e.g., https://www.calendarlabs.com/ical-calendar/holidays/norway-holidays-62/"""
     import_calendar(cal)
 
 
@@ -365,7 +365,7 @@ def init_app(
     db_file: Path = None,
     log_level: int = logging.WARNING,
 ) -> None:
-    """ Updates config from cli options """
+    """Updates config from cli options"""
     if config_file:
         app_config.from_file(config_file)
     if db_file and db_file != app_config.db_file:

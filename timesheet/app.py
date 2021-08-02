@@ -142,7 +142,7 @@ def guess_day(
     logins: list[datetime.time] = list()
     logouts: list[datetime.time] = list()
     logfiles = get_logs()
-    logging.debug(f"Found log files: {', '.join([str(s) for s in logfiles])}")
+    logging.debug(f"Found {len(logfiles)} log files: {', '.join([s.name for s in logfiles])}")
     for logfile in logfiles:
         logging.info(f"checking {logfile} for activity")
         log_activity = get_activity(logfile, day, clock_in, clock_out)
@@ -590,8 +590,8 @@ def get_day(day: datetime.date, missing_okay: bool = True) -> Optional[Timesheet
     return day_log
 
 
-def get_logs(log_dir: Path = Path("/var/log")) -> Iterable[Path]:
-    return log_dir.glob("auth.log*")
+def get_logs(log_dir: Path = Path("/var/log")):
+    return list(log_dir.glob("auth.log*"))
 
 
 def get_range(

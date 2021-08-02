@@ -1,7 +1,16 @@
 import datetime
+from typing import TYPE_CHECKING, Literal, Union
 
 from sqlalchemy import Boolean, Column, Date, MetaData, String, Time
-from sqlalchemy.ext.declarative.api import declarative_base
+
+if TYPE_CHECKING:
+    # sqlalchemy-stubs doesn't support 1.4+, but sqlalchemy2-stubs is still missing a lot
+    # so use old stubs for typing hints, and actual import when running
+    from sqlalchemy.ext.declarative.api import declarative_base  # type: ignore
+else:
+    # where declarative_base is actually located now
+    from sqlalchemy.orm import declarative_base
+
 from sqlalchemy.sql.sqltypes import Integer
 
 from .enums import LogType
@@ -19,6 +28,7 @@ class Timesheet(Base):
     clock_in = Column(Time, nullable=True)
     clock_out = Column(Time, nullable=True)
     is_flex = Column(Boolean, default=False)
+    is_pto = Column(Boolean, default=False)
 
     def __repr__(self) -> str:
         return f"<Timesheet date={self.date} clock_in={self.clock_in} clock_out={self.clock_out} flex={self.is_flex}>"
@@ -32,8 +42,11 @@ class Timesheet(Base):
         return ts_str
 
     def log(self, log_type: LogType) -> Log:
+        log_val: Union[datetime.time, Literal["Af", "Am"], None]
         if self.is_flex:
             log_val = "Af"
+        elif self.is_pto:
+            log_val = "Am"
         else:
             log_val = getattr(self, log_type.value, None)
         return Log(self.date, log_type, log_val)

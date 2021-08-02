@@ -1,0 +1,26 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+click = "*"
+pipenv-setup = "*"
+pyyaml = "*"
+sqlalchemy = "*"
+timesheet = {editable = true, path = "."}
+toml = "*"
+
+[dev-packages]
+black = "*"
+flake8 = "*"
+ipython = "*"
+pdbpp = "*"
+pylint = "*"
+sqlalchemy-stubs = "*"
+
+[requires]
+python_version = "3.9"
+
+[pipenv]
+allow_prereleases = true

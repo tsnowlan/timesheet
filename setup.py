@@ -1,13 +1,18 @@
+#!/usr/bin/env python3
 from setuptools import setup
 
 setup(
     name="timesheet",
-    version="v1.0.0",
+    version_config={
+        "version_file": "timesheet/VERSION",
+        "count_commits_from_version_file": True,
+    },
+    python_requires=">=3.9",
+    setup_requires=["setuptools-git-versioning"],
     install_requires=[
         "click>=7.1",
         "sqlalchemy>=1.3",
     ],
-    python_requires=">=3.9",
     extras_require={
         "dev": [
             "black>=20.8b1",
@@ -22,10 +27,11 @@ setup(
             "toml>=0.10.2",
         ],
     },
+    include_package_data=True,
     packages=["timesheet"],
     entry_points={
         "console_scripts": [
-            "clock = timesheet:clock",
+            "clock = timesheet.cli:clock",
             "timesheet = timesheet:main",
         ]
     },

@@ -1,7 +1,7 @@
 import datetime
 import logging
 from pathlib import Path
-from typing import Iterable, Literal, NamedTuple, Optional, Union, overload
+from typing import Iterable, Literal, NamedTuple, Optional, Tuple, Union, overload
 
 import click
 from click.exceptions import BadParameter
@@ -25,12 +25,9 @@ def clean_time(dt_obj):
     return dt_obj.replace(second=0, microsecond=0)
 
 
-def date_range(
-    start: datetime.date, end: datetime.date, skip_weekends: bool = True
-) -> Iterable[datetime.date]:
+def date_range(start: datetime.date, end: datetime.date) -> Iterable[datetime.date]:
     while start < end:
-        if start.weekday() < 5 or not skip_weekends:
-            yield start
+        yield start
         start += datetime.timedelta(days=1)
 
 
@@ -108,7 +105,7 @@ def str2enum(
 
 def target2dt(
     target: Union[TargetPeriod, TargetDay],
-) -> tuple[Optional[datetime.date], Optional[datetime.date]]:
+) -> Tuple[Optional[datetime.date], Optional[datetime.date]]:
     if target in (TargetDay.today, TargetDay.yesterday):
         min_date = TODAY if target.value == "today" else YESTERDAY
         max_date = min_date + datetime.timedelta(days=1)
@@ -123,7 +120,7 @@ def target2dt(
         elif target.value == "lastmonth":
             min_date = (TODAY.replace(day=1) - datetime.timedelta(days=1)).replace(day=1)
         else:
-            target_month = Month[target.value]
+            target_month = Month[target.name]
             min_date = TODAY.replace(month=target_month.value, day=1)
             # don't try and see the future
             if min_date > TODAY:
@@ -137,11 +134,13 @@ def target2dt(
 
 
 def time_difference(
-    t1: datetime.time, t2: datetime.time, rounded: bool = False, conf=None
+    t1: datetime.time,
+    t2: datetime.time,
+    rounded: bool = False,
+    round_threshold: Optional[int] = None,
 ) -> datetime.timedelta:
-    # conf: Optional[timesheet.config.Config]
     if rounded:
-        thresh = conf.round_threshold if conf else None
+        thresh = round_threshold
         t1 = round_time(t1, thresh)
         t2 = round_time(t2, thresh)
     return abs(
@@ -163,7 +162,7 @@ def validate_datetime(
 class Log(NamedTuple):
     day: datetime.date
     type: LogType
-    time: Union[datetime.time, Literal["Af"]]
+    time: Union[datetime.time, Literal["Af"], Literal["Am"], None]
 
 
 class AuthLog(NamedTuple):

@@ -114,7 +114,7 @@ def clock(
             guess_args = [log_type == lt for lt in LogType] + [overwrite]
             new_log = guess_day(log_time.date(), *guess_args).log(log_type)
         else:
-            new_log = add_log(log_time.date(), log_type, log_time.time())
+            new_log = add_log(log_time.date(), log_type, log_time.time(), overwrite)
     except (ExistingData, NoData) as e:
         logging.error(e)
         exit(1)

@@ -106,14 +106,19 @@ def print_range(
 
 
 @ensure_db(db)
-def add_log(log_day: datetime.date, log_type: LogType, log_time: datetime.time) -> Log:
+def add_log(
+    log_day: datetime.date,
+    log_type: LogType,
+    log_time: datetime.time,
+    overwrite: bool = False,
+) -> Log:
     log_data = {
         "day": log_day,
         "clock_in": log_time if log_type == LogType.IN else None,
         "clock_out": log_time if log_type == LogType.OUT else None,
     }
     if row_exists(log_day):
-        new_row = update_row(**log_data)
+        new_row = update_row(**log_data, overwrite=overwrite)
     else:
         new_row = add_row(**log_data)
     return new_row.log(log_type)

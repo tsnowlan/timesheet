@@ -1,6 +1,7 @@
-from typing import Optional, Union, overload
-import pkg_resources
 from pathlib import Path
+from typing import Optional, Union, overload
+
+import pkg_resources
 
 vfile = Path(__file__).parent / "VERSION"
 file_version = vfile.read_text().strip()

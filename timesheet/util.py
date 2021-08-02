@@ -25,12 +25,9 @@ def clean_time(dt_obj):
     return dt_obj.replace(second=0, microsecond=0)
 
 
-def date_range(
-    start: datetime.date, end: datetime.date, skip_weekends: bool = True
-) -> Iterable[datetime.date]:
+def date_range(start: datetime.date, end: datetime.date) -> Iterable[datetime.date]:
     while start < end:
-        if start.weekday() < 5 or not skip_weekends:
-            yield start
+        yield start
         start += datetime.timedelta(days=1)
 
 
@@ -137,11 +134,13 @@ def target2dt(
 
 
 def time_difference(
-    t1: datetime.time, t2: datetime.time, rounded: bool = False, conf=None
+    t1: datetime.time,
+    t2: datetime.time,
+    rounded: bool = False,
+    round_threshold: Optional[int] = None,
 ) -> datetime.timedelta:
-    # conf: Optional[timesheet.config.Config]
     if rounded:
-        thresh = conf.round_threshold if conf else None
+        thresh = round_threshold
         t1 = round_time(t1, thresh)
         t2 = round_time(t2, thresh)
     return abs(

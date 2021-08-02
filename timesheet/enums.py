@@ -34,6 +34,11 @@ class Month(IntEnum):
     december = auto()
 
 
+class PrintFormat(NamedEnum):
+    print = auto()
+    export = auto()
+
+
 # import calendar
 # Month = IntEnum(
 #     "Month",

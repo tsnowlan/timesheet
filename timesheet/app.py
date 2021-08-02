@@ -4,14 +4,14 @@ import logging
 from functools import wraps
 from io import TextIOWrapper
 from pathlib import Path
-from typing import Callable, Iterable, List, Literal, Optional, Tuple
+from typing import Callable, Optional
 
 from sqlalchemy.exc import IntegrityError
 
 from .config import Config
-from .constants import ROW_HEADER, TODAY, TOMORROW
+from .constants import ROW_HEADER, TOMORROW
 from .db import DB
-from .enums import LogType
+from .enums import LogType, PrintFormat
 from .exceptions import ExistingData, NoData
 from .models import FlexBalance, Holiday, Timesheet
 from .util import AuthLog, Log, clean_time, date_range, log_date, round_time, time_difference
@@ -48,7 +48,7 @@ def ensure_db(db: DB) -> Callable:
 def print_range(
     from_day: Optional[datetime.date],
     until_day: Optional[datetime.date],
-    print_format: Literal["print", "export"] = "print",
+    print_format: PrintFormat,
 ) -> None:
     logs_by_day = {l.date: l for l in get_range(from_day, until_day)}
     if len(logs_by_day) == 0:
@@ -73,10 +73,10 @@ def print_range(
         until_day = TOMORROW
     logging.debug(f"printing data from {from_day} until {until_day}")
 
-    if print_format == "print":
+    if print_format is PrintFormat.print:
         default_time = "None"
         print(ROW_HEADER)
-        for curr_day in date_range(from_day, until_day, False):
+        for curr_day in date_range(from_day, until_day):
             if curr_day in logs_by_day:
                 print(logs_by_day[curr_day])
             elif not is_workday(curr_day):
@@ -87,7 +87,7 @@ def print_range(
         for log_type in LogType:
             print(f"{log_type.value.upper()}")
             print("=" * 10)
-            for curr_day in date_range(from_day, until_day, False):
+            for curr_day in date_range(from_day, until_day):
                 if curr_day in logs_by_day:
                     day_log = logs_by_day[curr_day].log(log_type)
                     if isinstance(day_log.time, datetime.time):
@@ -185,6 +185,7 @@ def backfill_days(
     use_standard: bool = False,
     validate: bool = False,
     overwrite: bool = False,
+    holidays: bool = False,
 ) -> Optional[list[Timesheet]]:
     """
     Backfill entries on weekdays in the given range based on auth.log activity.
@@ -228,12 +229,15 @@ def backfill_days(
                     all_activity[log_day] = log_activity[log_day]
 
     new_days: list[Timesheet] = []
-    AuditRow = Tuple[Timesheet, Tuple[Optional[datetime.time], Optional[datetime.time]]]
+    AuditRow = tuple[Timesheet, tuple[Optional[datetime.time], Optional[datetime.time]]]
     audit_list: list[AuditRow] = list()
     for a_day in date_range(from_day, until_day):
+        if is_holiday(a_day) and not holidays:
+            logging.info(f"Found activity on {a_day}, but it's not a work day. Skipping.")
+            continue
         logging.debug(f"checking for activity from {a_day}")
         curr_row = get_day(a_day)
-        if use_standard:
+        if use_standard and is_workday(a_day):
             clock_in = config.standard_start
             clock_out = config.standard_quit
         else:
@@ -276,7 +280,7 @@ def backfill_days(
 
     if len(new_days) == 0:
         return
-
+    breakpoint()
     db.session.add_all(new_days)
     db.try_commit()
     return sorted(new_days, key=lambda x: x.date)
@@ -338,7 +342,7 @@ def flex_date(dt: datetime.date, flex_val: bool = True) -> Timesheet:
 
 
 @ensure_db(db)
-def get_flex_balance(dt: datetime.date) -> Tuple[FlexBalance, List[datetime.date]]:
+def get_flex_balance(dt: datetime.date) -> tuple[FlexBalance, list[datetime.date]]:
     """returns flex balance for the given day and list of days missing entries (if any)"""
     missing_logs = []
     latest: Optional[FlexBalance] = (
@@ -353,7 +357,7 @@ def get_flex_balance(dt: datetime.date) -> Tuple[FlexBalance, List[datetime.date
 
     logs = get_range(latest.date, dt)
     balance = datetime.timedelta(seconds=latest.seconds)
-    for day in date_range(latest.date, dt, False):
+    for day in workdate_range(latest.date, dt):
         work_len = datetime.timedelta(0)
         if logs and logs[0].date == day:
             day_log = logs.pop(0)
@@ -365,7 +369,9 @@ def get_flex_balance(dt: datetime.date) -> Tuple[FlexBalance, List[datetime.date
                     )
                     continue
             elif day_log.clock_in and day_log.clock_out:
-                work_len = time_difference(day_log.clock_in, day_log.clock_out, True, config)
+                work_len = time_difference(
+                    day_log.clock_in, day_log.clock_out, True, config.round_threshold
+                )
         elif not is_workday(day):
             # no log, not a workday
             continue
@@ -441,7 +447,7 @@ def pto_date(dt: datetime.date, pto_val: bool = True) -> Timesheet:
 
 def merge_times(
     current: Timesheet,
-    new_times: Tuple[Optional[datetime.time], Optional[datetime.time]],
+    new_times: tuple[Optional[datetime.time], Optional[datetime.time]],
     validate: bool = False,
     overwrite: bool = False,
 ) -> Optional[Timesheet]:
@@ -579,6 +585,12 @@ def is_holiday(day: datetime.date) -> bool:
 
 def is_workday(day: datetime.date) -> bool:
     return not is_holiday(day)
+
+
+def workdate_range(start: datetime.date, end: datetime.date):
+    for d in date_range(start, end):
+        if is_workday(d):
+            yield d
 
 
 def get_day(day: datetime.date, missing_okay: bool = True) -> Optional[Timesheet]:

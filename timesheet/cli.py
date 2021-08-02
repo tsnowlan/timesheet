@@ -18,11 +18,11 @@ from .app import (
     guess_day,
     import_calendar,
     print_range,
-    set_flex_balance,
     pto_date,
+    set_flex_balance,
 )
 from .constants import DATE_FORMATS, DATETIME_FORMATS, ROW_HEADER, TODAY
-from .enums import AllTargets, AllTargetsType, LogType
+from .enums import AllTargets, AllTargetsType, LogType, PrintFormat
 from .exceptions import ExistingData, NoData
 from .util import dt2date, init_logs, str2enum, target2dt, validate_datetime
 from .version import get_version
@@ -146,7 +146,19 @@ def clock(
     is_flag=True,
     help="overwrite existing entries without prompting",
 )
-def backfill(target: AllTargetsType, use_standard: bool, validate: bool, overwrite: bool) -> None:
+@click.option(
+    "--holidays",
+    "include_holidays",
+    is_flag=True,
+    help="Include holidays and weekends when backfilling",
+)
+def backfill(
+    target: AllTargetsType,
+    use_standard: bool,
+    validate: bool,
+    overwrite: bool,
+    include_holidays: bool,
+) -> None:
     f"""
     Backfills timesheet days in the given period from system logs
 
@@ -158,7 +170,12 @@ def backfill(target: AllTargetsType, use_standard: bool, validate: bool, overwri
     elif not min_date and not max_date:
         logging.debug(f"Backfilling as far as the logs will let us...", file=sys.stderr)
     new_logs = backfill_days(
-        min_date, max_date, use_standard, any([validate, app_config.debug]), overwrite
+        min_date,
+        max_date,
+        use_standard,
+        any([validate, app_config.debug]),
+        overwrite,
+        include_holidays,
     )
     if new_logs:
         print(f"Created or updated {len(new_logs)} timesheet entries:")
@@ -166,7 +183,7 @@ def backfill(target: AllTargetsType, use_standard: bool, validate: bool, overwri
         for log in new_logs:
             print(log)
     else:
-        logging.info(f"No timesheet entries changed")
+        print(f"No timesheet entries changed")
         exit(1)
 
 
@@ -212,7 +229,7 @@ def edit(log_type: LogType, log_time: datetime.datetime) -> None:
 )
 @click.option("--export", is_flag=True, help=f"print in a form easy to paste into the spreadsheet")
 def print_logs(target: AllTargetsType, export: bool) -> None:
-    print_format = "export" if export else "print"
+    print_format = PrintFormat.export if export else PrintFormat.print
     min_date, max_date = target2dt(target)
     try:
         print_range(min_date, max_date, print_format)
@@ -292,6 +309,7 @@ def pto_day(date: datetime.date, pto: bool):
 
 @click.group(help="view and manage flex balance")
 def balance():
+    "placeholder for flex balance subcommands"
     pass
 
 
@@ -346,9 +364,9 @@ def set_balance(date: datetime.date, balance: float, force: bool):
 
 @balance.command("update", help="update flex balance table to the current day")
 @click.option("--force", is_flag=True, help="overwrite any existing balance for today")
-def update_balance():
+def update_balance(force: bool):
     try:
-        new_balance = set_flex_balance(TODAY)
+        new_balance = set_flex_balance(TODAY, force=force)
     except NoData as e:
         print(e)
         exit(1)

@@ -1,14 +1,16 @@
 import datetime
-from typing import Literal, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Literal, Union
 
 from sqlalchemy import Boolean, Column, Date, MetaData, String, Time
 
 if TYPE_CHECKING:
-    # sqlalchemy-stubs doesn't support 1.4+, but sqlalchemy2-stubs is missing a lot
+    # sqlalchemy-stubs doesn't support 1.4+, but sqlalchemy2-stubs is still missing a lot
+    # so use old stubs for typing hints, and actual import when running
     from sqlalchemy.ext.declarative.api import declarative_base  # type: ignore
 else:
     # where declarative_base is actually located now
     from sqlalchemy.orm import declarative_base
+
 from sqlalchemy.sql.sqltypes import Integer
 
 from .enums import LogType

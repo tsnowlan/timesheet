@@ -1,14 +1,16 @@
 {
-  "name": "Python 3",
+  "name": "Timesheet",
   "build": {
     "dockerfile": "Dockerfile",
     "context": "..",
+    "target": "dev",
     "args": {
       // Update 'VARIANT' to pick a Python version: 3, 3.6, 3.7, 3.8, 3.9
       "VARIANT": "3.9",
       // Options
       "INSTALL_NODE": "true",
-      "NODE_VERSION": "lts/*"
+      "NODE_VERSION": "lts/*",
+      "USER_UID": "1000"
     }
   },
 
@@ -20,13 +22,20 @@
     "editor.defaultFormatter": "esbenp.prettier-vscode",
     "editor.formatOnSave": true,
     "python.analysis.typeCheckingMode": "basic",
+    "python.defaultInterpreterPath": "/dist/gitlab-ops-qFDBBSoT/bin/python3",
+    "python.formatting.autopep8Path": "/usr/local/py-utils/bin/autopep8",
     "python.formatting.blackPath": "/usr/local/py-utils/bin/black",
     "python.formatting.provider": "black",
+    "python.formatting.yapfPath": "/usr/local/py-utils/bin/yapf",
     "python.languageServer": "Pylance",
+    "python.linting.banditPath": "/usr/local/py-utils/bin/bandit",
     "python.linting.enabled": true,
+    "python.linting.flake8Path": "/usr/local/py-utils/bin/flake8",
+    "python.linting.mypyPath": "/usr/local/py-utils/bin/mypy",
+    "python.linting.pycodestylePath": "/usr/local/py-utils/bin/pycodestyle",
+    "python.linting.pydocstylePath": "/usr/local/py-utils/bin/pydocstyle",
     "python.linting.pylintEnabled": false,
-    "python.pythonPath": "/usr/local/bin/python",
-    "terminal.integrated.shell.linux": "/bin/bash"
+    "python.linting.pylintPath": "/usr/local/py-utils/bin/pylint"
   },
 
   // Add the IDs of extensions you want installed when the container is created.
@@ -40,15 +49,26 @@
     "Tyriar.sort-lines"
   ],
 
-  "mounts": [
-    "source=${localWorkspaceFolder}/.devcontainer,target=${containerWorkspaceFolder}/.vscode,type=bind"
-  ],
+  "containerEnv": {
+    "PIPENV_YES": "1",
+    "PIPENV_PIPFILE": "${containerWorkspaceFolder}/Pipfile",
+    "PIPENV_SHELL": "/bin/bash",
+    "PIPENV_VERBOSITY": "-1",
+    "WORKON_HOME": "/dist"
+  },
 
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
   // "forwardPorts": [],
 
   // Use 'postCreateCommand' to run commands after the container is created.
-  "postCreateCommand": "pip3 install .[dev,full]",
+  "postCreateCommand": "pipenv install --dev",
+
+  // re-use extensions, installed modules on rebuild instead of re-install
+  "mounts": [
+    "source=${localWorkspaceFolderBasename}-dist,target=/dist,type=volume",
+    "source=${localWorkspaceFolderBasename}-exts,target=/home/vscode/.vscode-server/extensions,type=volume",
+    "source=${localWorkspaceFolder}/.devcontainer,target=${containerWorkspaceFolder}/.vscode,type=bind"
+  ],
 
   // Comment out connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
   "remoteUser": "vscode"

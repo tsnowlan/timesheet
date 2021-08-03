@@ -9,12 +9,21 @@ from typing import Callable, Optional
 from sqlalchemy.exc import IntegrityError
 
 from .config import Config
-from .constants import ROW_HEADER, TOMORROW
+from .constants import ROW_HEADER, TODAY, TOMORROW
 from .db import DB
 from .enums import LogType, PrintFormat
 from .exceptions import ExistingData, NoData
 from .models import FlexBalance, Holiday, Timesheet
-from .util import AuthLog, Log, clean_time, date_range, log_date, round_time, time_difference
+from .util import (
+    AuthLog,
+    Log,
+    clean_time,
+    date_range,
+    log_date,
+    round_time,
+    time_difference,
+    timedelta_str,
+)
 
 # log parsing
 LOGIN_STRS = (
@@ -169,10 +178,10 @@ def guess_day(
     out_time: Optional[datetime.time] = logouts[-1] if logouts else None
 
     if in_time and day_log and day_log.clock_in and not overwrite:
-        raise ExistingData((day_log, "clock_in"), in_time)
+        raise ExistingData(day_log.__class__.__name__, "clock_in", day_log.clock_in, in_time)
 
     if out_time and day_log and day_log.clock_out and not overwrite:
-        raise ExistingData((day_log, "clock_out"), out_time)
+        raise ExistingData(day_log.__class__.__name__, "clock_out", day_log.clock_out, out_time)
 
     # make sure nothing wonky is happening
     if in_time and out_time:
@@ -285,7 +294,6 @@ def backfill_days(
 
     if len(new_days) == 0:
         return
-    breakpoint()
     db.session.add_all(new_days)
     db.try_commit()
     return sorted(new_days, key=lambda x: x.date)
@@ -347,22 +355,27 @@ def flex_date(dt: datetime.date, flex_val: bool = True) -> Timesheet:
 
 
 @ensure_db(db)
-def get_flex_balance(dt: datetime.date) -> tuple[FlexBalance, list[datetime.date]]:
-    """returns flex balance for the given day and list of days missing entries (if any)"""
+def get_flex_balance(
+    dt: datetime.date, ignore_dt: bool = False
+) -> tuple[FlexBalance, list[datetime.date]]:
+    """returns flex balance for the given day and list of days missing log entries (if any)"""
     missing_logs = []
-    latest: Optional[FlexBalance] = (
-        db.session.query(FlexBalance).order_by(FlexBalance.date.desc()).first()
-    )
+    latest_qry = db.session.query(FlexBalance)
+    if ignore_dt:
+        latest_qry = latest_qry.filter(FlexBalance.date < dt)
+    latest = latest_qry.order_by(FlexBalance.date.desc()).first()
     if latest is None:
         raise NoData(
-            db.db_file, "flexbalance", "No flex balance data, cannot fetch current balance"
+            db.db_file,
+            "flexbalance",
+            "No flex balance data, cannot fetch current balance",
         )
-    elif latest.date == dt:
-        return latest, missing_logs
 
-    logs = get_range(latest.date, dt)
+    logging.debug(f"Using latest flex balance: {latest}")
+    logs = get_range(latest.date, TOMORROW)
     balance = datetime.timedelta(seconds=latest.seconds)
-    for day in workdate_range(latest.date, dt):
+    for day in date_range(latest.date, dt):
+        logging.debug(f"calculating flex on {day}")
         work_len = datetime.timedelta(0)
         if logs and logs[0].date == day:
             day_log = logs.pop(0)
@@ -393,9 +406,12 @@ def get_flex_balance(dt: datetime.date) -> tuple[FlexBalance, list[datetime.date
             need_len = datetime.timedelta(0)
 
         net = work_len - need_len
-        # breakpoint()
-        logging.debug(f"{day}: work_len={work_len} need_len={need_len} net={net}")
-        logging.debug(f"old balance: {balance} new balance: {balance + net}")
+        logging.debug(
+            f"{day}: work_len={timedelta_str(work_len)} need_len={timedelta_str(need_len)} net={net}"
+        )
+        logging.debug(
+            f"old balance: {timedelta_str(balance)}, new balance: {timedelta_str(balance + net)}"
+        )
         balance += net
     if missing_logs:
         logging.warning(
@@ -412,19 +428,36 @@ def set_flex_balance(
     existing: Optional[FlexBalance] = (
         db.session.query(FlexBalance).filter(FlexBalance.date == dt).first()
     )
-    if existing and force is False:
-        if not get_resp(f"Overwrite existing flex balance of {existing.hours} on {existing.date}?"):
+    if existing:
+        if force is False and not get_resp(f"Overwrite existing flex balance of {existing!r}?"):
             exit(1)
+        logging.debug(f"existing balance: {existing}")
+        old_bal = existing.seconds
+    else:
+        old_bal = 0
 
     if bal_dt is None:
-        bal, missing_days = get_flex_balance(dt)
+        bal, missing_days = get_flex_balance(dt, force)
         if missing_days:
             missing_str = ", ".join([str(d) for d in missing_days])
             raise NoData(db.db_file, missing_str)
     else:
         bal = FlexBalance(date=dt, seconds=bal_dt.seconds)
 
-    db.session.add(bal)
+    if existing:
+        if old_bal == bal.seconds:
+            raise ExistingData(
+                FlexBalance.__name__,
+                "hours",
+                existing.hours,
+                bal.hours,
+                f"No change in flex balance: {bal}",
+            )
+        logging.info(f"updating existing flex balance: {bal}")
+        db.session.bulk_update_mappings(FlexBalance, [bal.asdict()])
+    else:
+        logging.info(f"adding new flex balance: {bal}")
+        db.session.add(bal)
     db.try_commit(True)
     return bal
 
@@ -590,12 +623,6 @@ def is_holiday(day: datetime.date) -> bool:
 
 def is_workday(day: datetime.date) -> bool:
     return not is_holiday(day)
-
-
-def workdate_range(start: datetime.date, end: datetime.date):
-    for d in date_range(start, end):
-        if is_workday(d):
-            yield d
 
 
 def get_day(day: datetime.date, missing_okay: bool = True) -> Optional[Timesheet]:

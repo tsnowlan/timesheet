@@ -31,6 +31,19 @@ def date_range(start: datetime.date, end: datetime.date) -> Iterable[datetime.da
         start += datetime.timedelta(days=1)
 
 
+def timedelta_str(td: datetime.timedelta) -> str:
+    days = td.days
+    hrs, raw_secs = divmod(td.seconds, 3600)
+    mins, secs = divmod(raw_secs, 60)
+    td_str = ""
+    if days > 0:
+        td_str += f"{days}d"
+    td_str += f"{hrs}h{mins:02d}m"
+    if secs > 0:
+        td_str += f"{secs:02d}s"
+    return td_str
+
+
 def init_logs(log_level: int = logging.INFO, force: bool = False):
     logging.basicConfig(
         format="%(asctime)s [%(levelname)s] %(message)s", level=log_level, force=force

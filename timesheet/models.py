@@ -1,5 +1,5 @@
 import datetime
-from typing import TYPE_CHECKING, Literal, Union
+from typing import Any, Mapping, TYPE_CHECKING, Literal, Union
 
 from sqlalchemy import Boolean, Column, Date, MetaData, String, Time
 
@@ -14,14 +14,18 @@ else:
 from sqlalchemy.sql.sqltypes import Integer
 
 from .enums import LogType
-from .util import Log
+from .util import Log, timedelta_str
 
 md: MetaData = MetaData()
-Base = declarative_base()
-Base.metadata = md
+Base = declarative_base(metadata=md)
 
 
-class Timesheet(Base):
+class DictMixin:
+    def asdict(self) -> Mapping[str, Any]:
+        return {k: getattr(self, k) for k in self.__dict__.keys() if not k.startswith("_sa_")}
+
+
+class Timesheet(DictMixin, Base):
     __tablename__ = "timesheet"
 
     date = Column(Date, primary_key=True, unique=True, index=True)
@@ -52,7 +56,7 @@ class Timesheet(Base):
         return Log(self.date, log_type, log_val)
 
 
-class Holiday(Base):
+class Holiday(DictMixin, Base):
     __tablename__ = "holidays"
 
     date = Column(Date, primary_key=True, index=True)
@@ -60,7 +64,7 @@ class Holiday(Base):
     comment = Column(String)
 
 
-class FlexBalance(Base):
+class FlexBalance(DictMixin, Base):
     """
     keeps track of current flextime balance
 
@@ -84,9 +88,7 @@ class FlexBalance(Base):
 
     @property
     def hr_min(self) -> str:
-        hr, sec = divmod(self.seconds, 3600)
-        mins = sec // 60
-        return f"{hr}:{mins:02d}"
+        return timedelta_str(datetime.timedelta(seconds=self.seconds))
 
     @classmethod
     def from_timedelta(cls, dt: datetime.date, bal_dt: datetime.timedelta) -> "FlexBalance":

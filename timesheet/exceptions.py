@@ -1,8 +1,10 @@
 import datetime
 from pathlib import Path
-from typing import Tuple, Union
+from typing import Union, TypeVar
 
-from .models import Timesheet
+from .models import Base, Timesheet
+
+T = TypeVar("T")
 
 
 class NoData(Exception):
@@ -20,19 +22,22 @@ class NoData(Exception):
 class ExistingData(Exception):
     def __init__(
         self,
-        target: Tuple[Timesheet, str],
-        value: Union[datetime.time, bool],
+        model: str,
+        fieldname: str,
+        old_value: T,
+        new_value: T,
         message: str = None,
     ) -> None:
-        self.target = target
-        self.new_value = value
+        self.model = model
+        self.fieldname = fieldname
+        self.old_value = old_value
+        self.new_value = new_value
         if message is None:
-            message = f"Cannot overwrite existing {self.target[1]} data on {self.target[0].date}"
+            message = (
+                f"Cannot overwrite existing {self.model}.{self.fieldname} = "
+                f"{self.old_value} with new value {self.new_value}"
+            )
         self.message = message
 
     def __str__(self) -> str:
         return self.message
-
-    @property
-    def old_value(self) -> Union[datetime.time, bool]:
-        return getattr(*self.target)

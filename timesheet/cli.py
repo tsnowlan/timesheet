@@ -351,7 +351,7 @@ def set_balance(date: datetime.date, balance: float, force: bool):
     balance_dt = datetime.timedelta(hours=balance)
     try:
         new_balance = set_flex_balance(date, balance_dt, force)
-    except NoData as e:
+    except (NoData, ExistingData) as e:
         print(e)
         exit(1)
     print(f"New flex balance: {new_balance.hours}h")
@@ -367,7 +367,7 @@ def set_balance(date: datetime.date, balance: float, force: bool):
 def update_balance(force: bool):
     try:
         new_balance = set_flex_balance(TODAY, force=force)
-    except NoData as e:
+    except (NoData, ExistingData) as e:
         print(e)
         exit(1)
     print(f"New flex balance: {new_balance.hours}h")

@@ -1,5 +1,4 @@
 import datetime
-import gzip
 import logging
 from functools import wraps
 from io import TextIOWrapper
@@ -9,7 +8,7 @@ from typing import Callable, Optional
 from sqlalchemy.exc import IntegrityError
 
 from .config import Config
-from .constants import ROW_HEADER, TODAY, TOMORROW
+from .constants import ROW_HEADER, TOMORROW
 from .db import DB
 from .enums import LogType, PrintFormat
 from .exceptions import ExistingData, NoData
@@ -17,6 +16,7 @@ from .models import FlexBalance, Holiday, Timesheet
 from .util import (
     AuthLog,
     Log,
+    LogPath,
     clean_time,
     date_range,
     log_date,
@@ -32,7 +32,12 @@ LOGIN_STRS = (
     "unlocked login keyring",
     "gnome-keyring-daemon started properly and unlocked keyring",
 )
-LOGOUT_STRS = ("Lid closed", "System is powering down")
+LOGOUT_STRS = (
+    "Lid closed",
+    "System is powering down",
+    "Suspending system...",
+    "Reached target Sleep",
+)
 
 # exported objects
 db: DB = DB()
@@ -161,6 +166,7 @@ def guess_day(
         logging.info(f"checking {logfile} for activity")
         log_activity = get_activity(logfile, day, clock_in, clock_out)
         if len(log_activity) == 0:
+            logging.debug(f"No activity found in {logfile}")
             continue
 
         if len(log_activity[day][LogType.IN]):
@@ -174,8 +180,8 @@ def guess_day(
         exit(1)
 
     # have to do this extra explicitly so typing works
-    in_time: Optional[datetime.time] = logins[0] if logins else None
-    out_time: Optional[datetime.time] = logouts[-1] if logouts else None
+    in_time: Optional[datetime.time] = sorted(logins)[0] if logins else None
+    out_time: Optional[datetime.time] = sorted(logouts)[-1] if logouts else None
 
     if in_time and day_log and day_log.clock_in and not overwrite:
         raise ExistingData(day_log.__class__.__name__, "clock_in", day_log.clock_in, in_time)
@@ -453,10 +459,10 @@ def set_flex_balance(
                 bal.hours,
                 f"No change in flex balance: {bal}",
             )
-        logging.info(f"updating existing flex balance: {bal}")
+        logging.debug(f"updating existing flex balance: {bal}")
         db.session.bulk_update_mappings(FlexBalance, [bal.asdict()])
     else:
-        logging.info(f"adding new flex balance: {bal}")
+        logging.debug(f"adding new flex balance: {bal}")
         db.session.add(bal)
     db.try_commit(True)
     return bal
@@ -467,7 +473,7 @@ def pto_date(dt: datetime.date, pto_val: bool = True) -> Timesheet:
     day = get_day(dt)
     if day:
         if pto_val == day.is_pto:
-            logging.info(f"{dt} already has is_pto={pto_val}")
+            logging.debug(f"{dt} already has is_pto={pto_val}")
             return day
         elif pto_val:
             logging.warning(f"Existing work log data on {dt} will be ignored")
@@ -476,7 +482,7 @@ def pto_date(dt: datetime.date, pto_val: bool = True) -> Timesheet:
     day.is_pto = pto_val  # type: ignore
     db.session.add(day)
     db.try_commit(True)
-    logging.info(f"Marked {dt} is_pto={pto_val}")
+    logging.debug(f"Marked {dt} is_pto={pto_val}")
     return day
 
 
@@ -547,64 +553,60 @@ def get_resp(msg: str) -> bool:
 
 
 def get_activity(
-    logfile: Path,
+    logfile: LogPath,
     day: datetime.date = None,
     log_in: bool = True,
     log_out: bool = False,
 ) -> dict[datetime.date, dict[LogType, list[datetime.time]]]:
     results: dict[datetime.date, dict[LogType, list[datetime.time]]] = {}
 
+    possible = 0
+    skipped = 0
     logging.debug(f"checking {logfile} for day={day} log_in={log_in} log_out={log_out}")
-    open_func = open
-    if logfile.name.endswith(".gz"):
-        open_func = gzip.open
-    with open_func(logfile, "rt") as logs:
-        for log_line in logs:
-            line_dt = log_date(log_line)
-            line_day = line_dt.date()
-            line_time = line_dt.time()
+    for log_line in logfile.lines:
+        line_dt = log_date(log_line)
+        line_day = line_dt.date()
+        line_time = line_dt.time()
 
-            # if no day passed, get all activity from file
-            if day:
-                # break out of files that won't have the day being looked for
-                # skip lines that aren't on the day we're looking for
-                if line_day > day:
-                    break
-                elif line_day < day:
-                    continue
-
-            if log_in and any([True for login_str in LOGIN_STRS if login_str in log_line]):
-                log_type = LogType.IN
-            elif log_out and any([True for logout_str in LOGOUT_STRS if logout_str in log_line]):
-                log_type = LogType.OUT
-            else:
+        # if no day passed, get all activity from file
+        if day:
+            # break out of files that won't have the day being looked for
+            # skip lines that aren't on the day we're looking for
+            if line_day > day:
+                break
+            elif line_day < day:
                 continue
 
-            if line_day not in results:
-                results[line_day] = {LogType.IN: [], LogType.OUT: []}
+        possible += 1
+        if log_in and any([login_str in log_line for login_str in LOGIN_STRS]):
+            log_type = LogType.IN
+        elif log_out and any([logout_str in log_line for logout_str in LOGOUT_STRS]):
+            log_type = LogType.OUT
+        else:
+            skipped += 1
+            continue
 
-            results[line_day][log_type].append(clean_time(line_time))
+        if line_day not in results:
+            results[line_day] = {LogType.IN: [], LogType.OUT: []}
 
+        results[line_day][log_type].append(clean_time(line_time))
+    logging.info(f"skipped {skipped} of {possible} lines ({possible-skipped} matches)")
     return results
 
 
 def index_logs() -> list[AuthLog]:
     log_index = list()
     for logfile in get_logs():
-        open_func = open
-        if logfile.name.endswith(".gz"):
-            open_func = gzip.open
         first_line = None
         last_line = None
-        with open_func(logfile, "rt") as logs:
-            for logline in logs:
-                # skip empty lines
-                if not logline.strip():
-                    continue
+        for logline in logfile.lines:
+            # skip empty lines
+            if not logline.strip():
+                continue
 
-                if first_line is None:
-                    first_line = logline
-                last_line = logline
+            if first_line is None:
+                first_line = logline
+            last_line = logline
 
         if first_line is None or last_line is None:
             logging.error(f"Malformed authlog {logfile}, skipping")
@@ -635,7 +637,7 @@ def get_day(day: datetime.date, missing_okay: bool = True) -> Optional[Timesheet
 
 
 def get_logs(log_dir: Path = Path("/var/log")):
-    return list(log_dir.glob("auth.log*"))
+    return [LogPath(f) for f in sorted(log_dir.glob("auth.log*")) + sorted(log_dir.glob("syslog*"))]
 
 
 def get_range(

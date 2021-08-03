@@ -1,7 +1,8 @@
 import datetime
+import gzip
 import logging
-from pathlib import Path
-from typing import Iterable, Literal, NamedTuple, Optional, Tuple, Union, overload
+from pathlib import Path, PosixPath
+from typing import Iterable, Literal, NamedTuple, Optional, TextIO, Tuple, Union, overload
 
 import click
 from click.exceptions import BadParameter
@@ -172,6 +173,21 @@ def validate_datetime(
     return clean_time(dt.replace(second=0, microsecond=0))
 
 
+class LogPath(PosixPath):
+    def read_logs(self) -> TextIO:
+        mode = "rt"
+        if self.suffix == ".gz":
+            return gzip.open(self, mode)
+        else:
+            return self.open(mode)
+
+    @property
+    def lines(self):
+        with self.read_logs() as rdr:
+            for line in rdr:
+                yield line
+
+
 class Log(NamedTuple):
     day: datetime.date
     type: LogType
@@ -179,6 +195,6 @@ class Log(NamedTuple):
 
 
 class AuthLog(NamedTuple):
-    file: Path
+    file: LogPath
     min_date: datetime.date
     max_date: datetime.date

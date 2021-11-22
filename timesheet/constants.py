@@ -1,9 +1,10 @@
 import datetime
 
 # dates
+ONE_DAY = datetime.timedelta(days=1)
 TODAY = datetime.date.today()
-TOMORROW = TODAY + datetime.timedelta(days=1)
-YESTERDAY = TODAY - datetime.timedelta(days=1)
+TOMORROW = TODAY + ONE_DAY
+YESTERDAY = TODAY - ONE_DAY
 
 # formatting
 TIME_FORMATS = ["%H:%M"]

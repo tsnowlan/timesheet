@@ -6,7 +6,7 @@ from typing import Iterable, Literal, NamedTuple, Optional, Tuple, Union, overlo
 import click
 from click.exceptions import BadParameter
 
-from .constants import TODAY, TOMORROW, YESTERDAY
+from .constants import ONE_DAY, TODAY, TOMORROW, YESTERDAY
 from .enums import AllTargets, LogType, Month, TargetDay, TargetPeriod
 
 
@@ -28,7 +28,7 @@ def clean_time(dt_obj):
 def date_range(start: datetime.date, end: datetime.date) -> Iterable[datetime.date]:
     while start < end:
         yield start
-        start += datetime.timedelta(days=1)
+        start += ONE_DAY
 
 
 def init_logs(log_level: int = logging.INFO, force: bool = False):
@@ -108,7 +108,7 @@ def target2dt(
 ) -> Tuple[Optional[datetime.date], Optional[datetime.date]]:
     if target in (TargetDay.today, TargetDay.yesterday):
         min_date = TODAY if target.value == "today" else YESTERDAY
-        max_date = min_date + datetime.timedelta(days=1)
+        max_date = min_date + ONE_DAY
         return (min_date, max_date)
     elif target == TargetPeriod.all:
         return (None, None)
@@ -118,7 +118,7 @@ def target2dt(
             max_date = TOMORROW
             return (min_date, max_date)
         elif target.value == "lastmonth":
-            min_date = (TODAY.replace(day=1) - datetime.timedelta(days=1)).replace(day=1)
+            min_date = (TODAY.replace(day=1) - ONE_DAY).replace(day=1)
         else:
             target_month = Month[target.name]
             min_date = TODAY.replace(month=target_month.value, day=1)

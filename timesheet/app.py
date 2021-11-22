@@ -9,7 +9,7 @@ from typing import Callable, Optional
 from sqlalchemy.exc import IntegrityError
 
 from .config import Config
-from .constants import ROW_HEADER, TOMORROW
+from .constants import ONE_DAY, ROW_HEADER, TOMORROW
 from .db import DB
 from .enums import LogType, PrintFormat
 from .exceptions import ExistingData, NoData
@@ -285,7 +285,6 @@ def backfill_days(
 
     if len(new_days) == 0:
         return
-    breakpoint()
     db.session.add_all(new_days)
     db.try_commit()
     return sorted(new_days, key=lambda x: x.date)
@@ -393,7 +392,6 @@ def get_flex_balance(dt: datetime.date) -> tuple[FlexBalance, list[datetime.date
             need_len = datetime.timedelta(0)
 
         net = work_len - need_len
-        # breakpoint()
         logging.debug(f"{day}: work_len={work_len} need_len={need_len} net={net}")
         logging.debug(f"old balance: {balance} new balance: {balance + net}")
         balance += net
@@ -430,21 +428,32 @@ def set_flex_balance(
 
 
 @ensure_db(db)
-def pto_date(dt: datetime.date, pto_val: bool = True) -> Timesheet:
-    day = get_day(dt)
-    if day:
-        if pto_val == day.is_pto:
-            logging.info(f"{dt} already has is_pto={pto_val}")
-            return day
-        elif pto_val:
-            logging.warning(f"Existing work log data on {dt} will be ignored")
-    else:
-        day = Timesheet(date=dt)
-    day.is_pto = pto_val  # type: ignore
-    db.session.add(day)
-    db.try_commit(True)
-    logging.info(f"Marked {dt} is_pto={pto_val}")
-    return day
+def pto_range(
+    start_dt: datetime.date, end_dt: datetime.date, pto_val: bool = True
+) -> list[Timesheet]:
+    days = []
+    for dt in date_range(start_dt, end_dt + ONE_DAY):
+        if is_workday(dt):
+            day = get_day(dt)
+            if day:
+                if pto_val == day.is_pto:
+                    logging.info(f"{dt} already has is_pto={pto_val}")
+                    continue
+                elif pto_val and (day.clock_in or day.clock_out):
+                    logging.warning(f"Existing work log data on {dt} will be ignored")
+            else:
+                day = Timesheet(date=dt)
+
+            if day.is_flex:
+                logging.warning(f"Skipping {dt}: marked as flexed, unflex it and try again")
+                continue
+            day.is_pto = pto_val  # type: ignore
+            days.append(day)
+
+    if days:
+        db.session.add_all(days)
+        db.try_commit()
+    return days
 
 
 ### internal stuff

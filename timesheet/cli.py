@@ -1,6 +1,5 @@
 import datetime
 import logging
-import sys
 from io import TextIOWrapper
 from pathlib import Path
 from typing import Optional
@@ -18,15 +17,14 @@ from .app import (
     guess_day,
     import_calendar,
     print_range,
-    pto_date,
+    pto_range,
     set_flex_balance,
 )
-from .constants import DATE_FORMATS, DATETIME_FORMATS, ROW_HEADER, TODAY
+from .constants import DATE_FORMATS, DATETIME_FORMATS, ONE_DAY, ROW_HEADER, TODAY
 from .enums import AllTargets, AllTargetsType, LogType, PrintFormat
 from .exceptions import ExistingData, NoData
 from .util import dt2date, init_logs, str2enum, target2dt, validate_datetime
 from .version import get_version
-
 
 ##########################################################################################
 #                                   core functionality                                   #
@@ -166,9 +164,9 @@ def backfill(
     """
     min_date, max_date = target2dt(target)
     if min_date and not max_date:
-        max_date = min_date + datetime.timedelta(days=1)
+        max_date = min_date + ONE_DAY
     elif not min_date and not max_date:
-        logging.debug(f"Backfilling as far as the logs will let us...", file=sys.stderr)
+        logging.debug(f"Backfilling as far as the logs will let us...")
     new_logs = backfill_days(
         min_date,
         max_date,
@@ -287,7 +285,10 @@ def flex_day(date: datetime.date, flex_val: bool):
 @click.command(
     "pto",
     short_help="mark a day as PTO",
-    help=f"mark the given date as PTO (default: {TODAY}",
+    help=(
+        f"marks/unmarks the given date(s) as PTO (default: {TODAY}). If two dates are given, "
+        "all work dates in the inclusive range are modified."
+    ),
 )
 @click.argument(
     "date",
@@ -296,10 +297,27 @@ def flex_day(date: datetime.date, flex_val: bool):
     callback=dt2date,
     default=str(TODAY),
 )
-@click.option("--pto", is_flag=True, default=True, help="mark/unmark a date as flexed")
-def pto_day(date: datetime.date, pto: bool):
-    new_day = pto_date(date, pto)
-    print(f"new day:\n{new_day}")
+@click.argument(
+    "end_date",
+    metavar="[END_DATE]",
+    type=click.DateTime(DATE_FORMATS),
+    callback=dt2date,
+    default=None,
+)
+@click.option("--pto/--no-pto", default=True, help="mark/unmark a date as PTO")
+def pto_day(date: datetime.date, end_date: Optional[datetime.date], pto: bool):
+    if end_date is None:
+        end_date = date + ONE_DAY
+    else:
+        end_date += ONE_DAY
+    new_days = pto_range(date, end_date, pto)
+
+    if any(new_days):
+        print(f"Marked {len(new_days)} days as {'pto' if pto else 'non-pto'}")
+        for d in new_days:
+            print(d)
+    else:
+        print(f"No valid days to mark/unmark as PTO")
 
 
 #######################

@@ -6,7 +6,7 @@ FROM python:${VARIANT} AS dev
 COPY .devcontainer/library-scripts/*.sh .devcontainer/library-scripts/*.env /tmp/library-scripts/
 
 # [Option] Install zsh
-ARG INSTALL_ZSH="true"
+ARG INSTALL_ZSH="false"
 # [Option] Upgrade OS packages to their latest versions
 ARG UPGRADE_PACKAGES="true"
 # Install needed packages and setup non-root user. Use a separate RUN statement to add your own dependencies.
@@ -40,7 +40,11 @@ RUN if [ "$INSTALL_NODE" = "true" ]; then bash /tmp/library-scripts/node-debian.
 RUN rm -rf /tmp/library-scripts
 
 # mkdir and chown to allow mounting volumes to ~/.vscode-server
-RUN mkdir -p /home/vscode/.vscode-server/extensions /dist && chown -R vscode:vscode /home/vscode /dist
+RUN mkdir -p /home/vscode/.vscode-server/extensions /dist/timesheet /dist && chown -R vscode:vscode /home/vscode /dist
+
+ENV PIPENV_NOSPIN=1 \
+    PIPENV_VERBOSITY=-1 \
+    WORKON_HOME=/dist
 
 FROM dev AS prod
 

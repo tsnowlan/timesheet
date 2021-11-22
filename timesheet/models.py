@@ -31,11 +31,13 @@ class Timesheet(Base):
     is_pto = Column(Boolean, default=False)
 
     def __repr__(self) -> str:
-        return f"<Timesheet date={self.date} clock_in={self.clock_in} clock_out={self.clock_out} flex={self.is_flex}>"
+        return f"<Timesheet date={self.date} clock_in={self.clock_in} clock_out={self.clock_out} flex={self.is_flex} pto={self.is_pto}>"
 
     def __str__(self) -> str:
         if self.is_flex:
             times = ["flexed", "flexed"]
+        elif self.is_pto:
+            times = ["pto", "pto"]
         else:
             times = [self.clock_in, self.clock_out]
         ts_str = f"{self.date}\t{str(times[0]): <8}\t{str(times[1]): <8}"

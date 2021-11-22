@@ -59,7 +59,6 @@ class DB:
             if (self.db_file and db_file != self.db_file) or (
                 self.engine_file and self.engine_file != db_file
             ):
-                breakpoint()
                 raise ValueError("Cannot overwrite existing db_file, create a new DB object")
         elif getattr(self, "session", None):
             # use existing session, maybe give a warning?
@@ -71,7 +70,7 @@ class DB:
         self._init_session(echo_sql)
 
     def try_commit(self, do_breakpoint: bool = False):
-        """ try/except session.commit with optional breakpoint for SQLAlchemyErrors """
+        """try/except session.commit with optional breakpoint for SQLAlchemyErrors"""
         try:
             self.session.commit()
         except SQLAlchemyError as e:

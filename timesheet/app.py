@@ -372,6 +372,8 @@ def get_flex_balance(dt: datetime.date) -> tuple[FlexBalance, list[datetime.date
                         f"Check timesheet on {day}: marked as flex, but is a weekend or holiday"
                     )
                     continue
+            elif day_log.is_pto:
+                continue
             elif day_log.clock_in and day_log.clock_out:
                 work_len = time_difference(
                     day_log.clock_in, day_log.clock_out, True, config.round_threshold

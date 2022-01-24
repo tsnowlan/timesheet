@@ -12,7 +12,7 @@ timesheet = {editable = true, path = "."}
 toml = "*"
 
 [dev-packages]
-black = "*"
+black = "21.12b0"
 flake8 = "*"
 ipython = "*"
 pdbpp = "*"
@@ -21,6 +21,3 @@ sqlalchemy-stubs = "*"
 
 [requires]
 python_version = "3.9"
-
-[pipenv]
-allow_prereleases = true

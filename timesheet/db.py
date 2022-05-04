@@ -18,18 +18,18 @@ class DB:
     metadata: MetaData = Base.metadata
     _sessionmaker: sessionmaker
 
-    def __init__(self, db_file: Optional[Path] = None, echo_sql=False) -> None:
+    def __init__(self, db_file: Optional[Path] = None, echo_sql=False):
         if db_file:
             self.db_file = db_file
             self._init_session(echo_sql)
 
-    def _init_session(self, echo_sql: bool) -> None:
+    def _init_session(self, echo_sql: bool):
         db_str = f"sqlite:///{self.db_file}"
         self.engine = create_engine(db_str, echo=echo_sql)
         self._sessionmaker = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
         self.session = scoped_session(self._sessionmaker)
 
-    def _validate_conn(self) -> None:
+    def _validate_conn(self):
         conn_attrs = ["session", "engine", "db_file"]
         if any([hasattr(self, "session"), hasattr(self, "engine")]):
             assert all(
@@ -46,7 +46,7 @@ class DB:
             return Path(make_url(self.engine.url).database)
         return None
 
-    def connect(self, db_file: Optional[Path] = None, echo_sql: bool = False) -> None:
+    def connect(self, db_file: Optional[Path] = None, echo_sql: bool = False):
         # no db_file, no connection
         if not any([db_file, hasattr(self, "db_file")]):
             raise ValueError("You must specify db_file on creation or when connecting")
@@ -82,14 +82,14 @@ class DB:
                 self.session.rollback()
                 raise e
 
-    def create_db(self) -> None:
+    def create_db(self):
         self.metadata.create_all(self.engine)
 
-    def disconnect(self) -> None:
+    def disconnect(self):
         if hasattr(self, "session"):
             self.session.close()
 
-    def _ensure_db(self) -> None:
+    def _ensure_db(self):
         assert (
             getattr(self, "session", None) is not None and getattr(self, "engine", None) is not None
         )

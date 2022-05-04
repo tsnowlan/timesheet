@@ -1,4 +1,4 @@
-import datetime
+import datetime as DT
 import logging
 from io import TextIOWrapper
 from pathlib import Path
@@ -6,11 +6,10 @@ from typing import Optional
 
 import click
 
+from .app import add_log, backfill_days
+from .app import config as app_config
 from .app import (
-    config as app_config,
     db,
-    add_log,
-    backfill_days,
     edit_log,
     flex_date,
     get_flex_balance,
@@ -60,7 +59,7 @@ def run_cli(
     config_file: Optional[Path],
     print_version: bool,
     log_level: int = logging.WARNING,
-) -> None:
+):
     if print_version:
         print(get_version(True))
         exit()
@@ -85,7 +84,7 @@ def run_cli(
 @click.argument(
     "log_time",
     metavar="[TIME_STRING]",
-    default=str(datetime.datetime.now()),
+    default=str(DT.datetime.now()),
     type=click.DateTime(DATETIME_FORMATS),
     callback=validate_datetime,
 )
@@ -99,12 +98,12 @@ def run_cli(
 )
 def clock(
     log_type: LogType,
-    log_time: datetime.datetime,
+    log_time: DT.datetime,
     guess: bool,
     overwrite: bool,
     config_file: Optional[Path],
     db_file: Optional[Path],
-) -> None:
+):
     init_app(config_file, db_file)
 
     try:
@@ -156,7 +155,7 @@ def backfill(
     validate: bool,
     overwrite: bool,
     include_holidays: bool,
-) -> None:
+):
     f"""
     Backfills timesheet days in the given period from system logs
 
@@ -199,7 +198,7 @@ def backfill(
     type=click.DateTime(DATETIME_FORMATS),
     callback=validate_datetime,
 )
-def edit(log_type: LogType, log_time: datetime.datetime) -> None:
+def edit(log_type: LogType, log_time: DT.datetime):
     try:
         new_log = edit_log(log_time.date(), log_type, log_time.time())
     except NoData as e:
@@ -226,7 +225,7 @@ def edit(log_type: LogType, log_time: datetime.datetime) -> None:
     callback=str2enum,
 )
 @click.option("--export", is_flag=True, help=f"print in a form easy to paste into the spreadsheet")
-def print_logs(target: AllTargetsType, export: bool) -> None:
+def print_logs(target: AllTargetsType, export: bool):
     print_format = PrintFormat.export if export else PrintFormat.print
     min_date, max_date = target2dt(target)
     try:
@@ -272,7 +271,7 @@ def update_holidays(cal: TextIOWrapper):
 )
 @click.option("--unflex", "flex_val", flag_value=False, help="unmark a date as flexed")
 @click.option("--flex", "flex_val", flag_value=True, default=True, hidden=True)
-def flex_day(date: datetime.date, flex_val: bool):
+def flex_day(date: DT.date, flex_val: bool):
     new_day = flex_date(date, flex_val)
     print(f"new day:\n{new_day}")
 
@@ -305,7 +304,7 @@ def flex_day(date: datetime.date, flex_val: bool):
     default=None,
 )
 @click.option("--pto/--no-pto", default=True, help="mark/unmark a date as PTO")
-def pto_day(date: datetime.date, end_date: Optional[datetime.date], pto: bool):
+def pto_day(date: DT.date, end_date: Optional[DT.date], pto: bool):
     if end_date is None:
         end_date = date + ONE_DAY
     else:
@@ -344,7 +343,7 @@ def balance():
     callback=dt2date,
     default=str(TODAY),
 )
-def get_balance(date: datetime.date):
+def get_balance(date: DT.date):
     try:
         current_balance, _ = get_flex_balance(date)
     except NoData as e:
@@ -365,8 +364,8 @@ def get_balance(date: datetime.date):
 )
 @click.argument("balance", type=float, required=True)
 @click.option("--force", is_flag=True, help="overwrite any existing balance on the given day")
-def set_balance(date: datetime.date, balance: float, force: bool):
-    balance_dt = datetime.timedelta(hours=balance)
+def set_balance(date: DT.date, balance: float, force: bool):
+    balance_dt = DT.timedelta(hours=balance)
     try:
         new_balance = set_flex_balance(date, balance_dt, force)
     except NoData as e:
@@ -397,10 +396,10 @@ def update_balance(force: bool):
 
 
 def init_app(
-    config_file: Path = None,
-    db_file: Path = None,
+    config_file: Optional[Path] = None,
+    db_file: Optional[Path] = None,
     log_level: int = logging.WARNING,
-) -> None:
+):
     """Updates config from cli options"""
     if config_file:
         app_config.from_file(config_file)

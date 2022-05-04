@@ -96,3 +96,4 @@ class TargetPeriod(NamedEnum):
 
 AllTargetsType = Union[TargetDay, TargetPeriod]
 AllTargets: List[str] = [t.name for t in TargetDay] + [t.name for t in TargetPeriod]
+StrToEnum = Union[LogType, TargetDay, TargetPeriod]

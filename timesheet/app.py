@@ -1,4 +1,4 @@
-import datetime
+import datetime as DT
 import gzip
 import logging
 from functools import wraps
@@ -46,10 +46,8 @@ def ensure_db(db: DB) -> Callable:
 # exported functions
 @ensure_db(db)
 def print_range(
-    from_day: Optional[datetime.date],
-    until_day: Optional[datetime.date],
-    print_format: PrintFormat,
-) -> None:
+    from_day: Optional[DT.date], until_day: Optional[DT.date], print_format: PrintFormat
+):
     logs_by_day = {l.date: l for l in get_range(from_day, until_day)}
     if len(logs_by_day) == 0:
         if from_day and until_day:
@@ -90,7 +88,7 @@ def print_range(
             for curr_day in date_range(from_day, until_day):
                 if curr_day in logs_by_day:
                     day_log = logs_by_day[curr_day].log(log_type)
-                    if isinstance(day_log.time, datetime.time):
+                    if isinstance(day_log.time, DT.time):
                         rounded = round_time(
                             day_log.time,
                             config.round_threshold,
@@ -107,9 +105,9 @@ def print_range(
 
 @ensure_db(db)
 def add_log(
-    log_day: datetime.date,
+    log_day: DT.date,
     log_type: LogType,
-    log_time: datetime.time,
+    log_time: DT.time,
     overwrite: bool = False,
 ) -> Log:
     log_data = {
@@ -125,7 +123,7 @@ def add_log(
 
 
 @ensure_db(db)
-def edit_log(log_day: datetime.date, log_type: LogType, log_time: datetime.time) -> Timesheet:
+def edit_log(log_day: DT.date, log_type: LogType, log_time: DT.time) -> Timesheet:
     log_data = {"day": log_day, log_type.value: log_time, "overwrite": True}
     if row_exists(log_day):
         new_row = update_row(**log_data)
@@ -136,7 +134,7 @@ def edit_log(log_day: datetime.date, log_type: LogType, log_time: datetime.time)
 
 @ensure_db(db)
 def guess_day(
-    day: datetime.date,
+    day: DT.date,
     clock_in: bool = True,
     clock_out: bool = False,
     overwrite: bool = False,
@@ -144,8 +142,8 @@ def guess_day(
     # check for an existing entry
     day_log = get_day(day)
 
-    logins: list[datetime.time] = list()
-    logouts: list[datetime.time] = list()
+    logins: list[DT.time] = list()
+    logouts: list[DT.time] = list()
     logfiles = get_logs()
     logging.debug(f"Found {len(logfiles)} log files: {', '.join([s.name for s in logfiles])}")
     for logfile in logfiles:
@@ -165,8 +163,8 @@ def guess_day(
         exit(1)
 
     # have to do this extra explicitly so typing works
-    in_time: Optional[datetime.time] = logins[0] if logins else None
-    out_time: Optional[datetime.time] = logouts[-1] if logouts else None
+    in_time: Optional[DT.time] = logins[0] if logins else None
+    out_time: Optional[DT.time] = logouts[-1] if logouts else None
 
     if in_time and day_log and day_log.clock_in and not overwrite:
         raise ExistingData((day_log, "clock_in"), in_time)
@@ -185,8 +183,8 @@ def guess_day(
 
 @ensure_db(db)
 def backfill_days(
-    from_day: Optional[datetime.date] = None,
-    until_day: Optional[datetime.date] = None,
+    from_day: Optional[DT.date] = None,
+    until_day: Optional[DT.date] = None,
     use_standard: bool = False,
     validate: bool = False,
     overwrite: bool = False,
@@ -212,7 +210,7 @@ def backfill_days(
         until_day = TOMORROW
     logging.info(f"Backfilling from {from_day} until {until_day}")
 
-    all_activity: dict[datetime.date, dict[LogType, list[datetime.time]]] = dict()
+    all_activity: dict[DT.date, dict[LogType, list[DT.time]]] = dict()
     for authlog in idx:
         # target range: [from_day, until_day)
         # log dates: [min_date, max_date]
@@ -234,7 +232,7 @@ def backfill_days(
                     all_activity[log_day] = log_activity[log_day]
 
     new_days: list[Timesheet] = []
-    AuditRow = tuple[Timesheet, tuple[Optional[datetime.time], Optional[datetime.time]]]
+    AuditRow = tuple[Timesheet, tuple[Optional[DT.time], Optional[DT.time]]]
     audit_list: list[AuditRow] = list()
     for a_day in date_range(from_day, until_day):
         if is_holiday(a_day) and not holidays:
@@ -295,40 +293,55 @@ def import_calendar(cal: TextIOWrapper):
     """Parse an ics file and load into db"""
     in_event = False
     curr_event = dict()
-    all_events = []
+    all_events: dict[DT.date, Holiday] = {}
     for line in cal:
         if not in_event and line.strip() == "BEGIN:VEVENT":
             in_event = True
-        elif in_event:
+        elif in_event and ":" in line:
             key, val = line.strip().split(":", 1)
             if key == "SUMMARY":
                 curr_event["name"] = val
-            elif key == "DTSTART":
-                curr_event["date"] = datetime.datetime.strptime(val, "%Y%m%d").date()
+            elif key.startswith("DTSTART"):
+                curr_event["date"] = DT.datetime.strptime(val, "%Y%m%d").date()
             elif key == "END":
+                if "date" not in curr_event or "name" not in curr_event:
+                    print(f"missing required field(s): {curr_event}")
+                    breakpoint()
                 existing = (
-                    db.session.query(Holiday)
-                    .filter(
-                        Holiday.date == curr_event["date"] and Holiday.name == curr_event["name"]
-                    )
-                    .all()
+                    db.session.query(Holiday).filter(Holiday.date == curr_event["date"]).all()
                 )
                 if existing:
-                    logging.debug("{name} on {date} already exists, skipping".format(**curr_event))
+                    logging.info(
+                        "cannot create {name} on {date}, {existing_name} already there, skipping".format(
+                            existing_name=existing[0].name,
+                            **curr_event,
+                        )
+                    )
+                    continue
+                elif existing := all_events.get(curr_event["date"]):
+                    if existing.name == curr_event["name"]:
+                        logging.info("skipping duplicate entry for '{name}'".format(**curr_event))
+                    else:
+                        logging.info(
+                            "cannot create '{name}' on {date}, '{existing_name}' already in queue, skipping".format(
+                                existing_name=existing.name,
+                                **curr_event,
+                            )
+                        )
                     continue
                 logging.debug("Creating holiday '{name}' on {date}".format(**curr_event))
                 hday = Holiday(**curr_event)
-                all_events.append(hday)
+                all_events[hday.date] = hday
                 curr_event = dict()
                 in_event = False
-    db.session.add_all(all_events)
+    db.session.add_all(all_events.values())
     db.try_commit(True)
     logging.info(f"Added {len(all_events)} new holidays to table")
     pass
 
 
 @ensure_db(db)
-def flex_date(dt: datetime.date, flex_val: bool = True) -> Timesheet:
+def flex_date(dt: DT.date, flex_val: bool = True) -> Timesheet:
     day = get_day(dt)
     if day:
         if flex_val == day.is_flex:
@@ -346,7 +359,7 @@ def flex_date(dt: datetime.date, flex_val: bool = True) -> Timesheet:
 
 
 @ensure_db(db)
-def get_flex_balance(dt: datetime.date) -> tuple[FlexBalance, list[datetime.date]]:
+def get_flex_balance(dt: DT.date) -> tuple[FlexBalance, list[DT.date]]:
     """returns flex balance for the given day and list of days missing entries (if any)"""
     missing_logs = []
     latest: Optional[FlexBalance] = (
@@ -360,9 +373,9 @@ def get_flex_balance(dt: datetime.date) -> tuple[FlexBalance, list[datetime.date
         return latest, missing_logs
 
     logs = get_range(latest.date, dt)
-    balance = datetime.timedelta(seconds=latest.seconds)
+    balance = DT.timedelta(seconds=latest.seconds)
     for day in workdate_range(latest.date, dt):
-        work_len = datetime.timedelta(0)
+        work_len = DT.timedelta(0)
         if logs and logs[0].date == day:
             day_log = logs.pop(0)
             if day_log.is_flex:
@@ -391,7 +404,7 @@ def get_flex_balance(dt: datetime.date) -> tuple[FlexBalance, list[datetime.date
         if is_workday(day):
             need_len = config.day_length
         else:
-            need_len = datetime.timedelta(0)
+            need_len = DT.timedelta(0)
 
         net = work_len - need_len
         logging.debug(f"{day}: work_len={work_len} need_len={need_len} net={net}")
@@ -407,7 +420,7 @@ def get_flex_balance(dt: datetime.date) -> tuple[FlexBalance, list[datetime.date
 
 @ensure_db(db)
 def set_flex_balance(
-    dt: datetime.date, bal_dt: datetime.timedelta = None, force: bool = False
+    dt: DT.date, bal_dt: Optional[DT.timedelta] = None, force: bool = False
 ) -> FlexBalance:
     existing: Optional[FlexBalance] = (
         db.session.query(FlexBalance).filter(FlexBalance.date == dt).first()
@@ -430,9 +443,7 @@ def set_flex_balance(
 
 
 @ensure_db(db)
-def pto_range(
-    start_dt: datetime.date, end_dt: datetime.date, pto_val: bool = True
-) -> list[Timesheet]:
+def pto_range(start_dt: DT.date, end_dt: DT.date, pto_val: bool = True) -> list[Timesheet]:
     days = []
     for dt in date_range(start_dt, end_dt + ONE_DAY):
         if is_workday(dt):
@@ -463,7 +474,7 @@ def pto_range(
 
 def merge_times(
     current: Timesheet,
-    new_times: tuple[Optional[datetime.time], Optional[datetime.time]],
+    new_times: tuple[Optional[DT.time], Optional[DT.time]],
     validate: bool = False,
     overwrite: bool = False,
 ) -> Optional[Timesheet]:
@@ -526,11 +537,11 @@ def get_resp(msg: str) -> bool:
 
 def get_activity(
     logfile: Path,
-    day: datetime.date = None,
+    day: Optional[DT.date] = None,
     log_in: bool = True,
     log_out: bool = False,
-) -> dict[datetime.date, dict[LogType, list[datetime.time]]]:
-    results: dict[datetime.date, dict[LogType, list[datetime.time]]] = {}
+) -> dict[DT.date, dict[LogType, list[DT.time]]]:
+    results: dict[DT.date, dict[LogType, list[DT.time]]] = {}
 
     logging.debug(f"checking {logfile} for day={day} log_in={log_in} log_out={log_out}")
     open_func = open
@@ -595,21 +606,21 @@ def index_logs() -> list[AuthLog]:
     return sorted(log_index, key=lambda x: x.min_date)
 
 
-def is_holiday(day: datetime.date) -> bool:
+def is_holiday(day: DT.date) -> bool:
     return day.weekday() > 4 or db.session.query(Holiday).filter(Holiday.date == day).count() > 0
 
 
-def is_workday(day: datetime.date) -> bool:
+def is_workday(day: DT.date) -> bool:
     return not is_holiday(day)
 
 
-def workdate_range(start: datetime.date, end: datetime.date):
+def workdate_range(start: DT.date, end: DT.date):
     for d in date_range(start, end):
         if is_workday(d):
             yield d
 
 
-def get_day(day: datetime.date, missing_okay: bool = True) -> Optional[Timesheet]:
+def get_day(day: DT.date, missing_okay: bool = True) -> Optional[Timesheet]:
     day_log: Optional[Timesheet] = (
         db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
     )
@@ -623,8 +634,8 @@ def get_logs(log_dir: Path = Path("/var/log")):
 
 
 def get_range(
-    from_day: Optional[datetime.date] = None,
-    until_day: Optional[datetime.date] = None,
+    from_day: Optional[DT.date] = None,
+    until_day: Optional[DT.date] = None,
     missing_okay: bool = True,
 ) -> list[Timesheet]:
     query = db.session.query(Timesheet)
@@ -641,14 +652,14 @@ def get_range(
     return logs
 
 
-def row_exists(idx: datetime.date) -> bool:
+def row_exists(idx: DT.date) -> bool:
     return bool(get_day(idx))
 
 
 def add_row(
-    day: datetime.date,
-    clock_in: Optional[datetime.time] = None,
-    clock_out: Optional[datetime.time] = None,
+    day: DT.date,
+    clock_in: Optional[DT.time] = None,
+    clock_out: Optional[DT.time] = None,
     is_flex: bool = False,
     is_pto: bool = False,
 ) -> Timesheet:
@@ -669,9 +680,9 @@ def add_row(
 
 
 def update_row(
-    day: datetime.date,
-    clock_in: Optional[datetime.time] = None,
-    clock_out: Optional[datetime.time] = None,
+    day: DT.date,
+    clock_in: Optional[DT.time] = None,
+    clock_out: Optional[DT.time] = None,
     overwrite: bool = False,
 ) -> Timesheet:
     row = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()

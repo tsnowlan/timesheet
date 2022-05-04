@@ -1,4 +1,4 @@
-import datetime
+import datetime as DT
 import logging
 from pathlib import Path
 from typing import Optional
@@ -10,16 +10,16 @@ DEF_DBFILE = Path().home() / "timesheet.db"
 
 
 class Config:
-    standard_start = datetime.time(9, 0)
-    standard_quit = datetime.time(16, 30)
-    _day_length: Optional[datetime.timedelta] = None
+    standard_start = DT.time(9, 0)
+    standard_quit = DT.time(16, 30)
+    _day_length: Optional[DT.timedelta] = None
     work_weekend = False
     round_interval = 15
     round_threshold = round_interval // 2
     db_file = DEF_DBFILE
     debug = False
 
-    def __init__(self, config_file: Optional[Path] = None, **kwargs) -> None:
+    def __init__(self, config_file: Optional[Path] = None, **kwargs):
         if config_file:
             self.from_file(config_file)
 
@@ -32,7 +32,7 @@ class Config:
             self._day_length = time_difference(self.standard_quit, self.standard_start)
         return self._day_length
 
-    def from_file(self, config_file: Path, strict: bool = False) -> None:
+    def from_file(self, config_file: Path, strict: bool = False):
         if not config_file.exists():
             err = OSError(f"Specified config file {config_file} does not exist")
             if strict:
@@ -56,7 +56,7 @@ class Config:
         else:
             self._from_toml(config_file)
 
-    def update(self, strict: bool = False, **kwargs) -> None:
+    def update(self, strict: bool = False, **kwargs):
         for k, v in kwargs.items():
             if hasattr(self, k):
                 setattr(self, k, v)
@@ -67,12 +67,12 @@ class Config:
                 else:
                     logging.warning(f"{err}. Skipping...")
 
-    def _from_json(self, config_file: Path) -> None:
+    def _from_json(self, config_file: Path):
         import json
 
         self.update(**json.loads(config_file.read_text()))
 
-    def _from_yaml(self, config_file: Path) -> None:
+    def _from_yaml(self, config_file: Path):
         try:
             import yaml
         except ModuleNotFoundError:
@@ -89,7 +89,7 @@ class Config:
 
         self.update(**yaml.load(config_file.read_text(), Loader=SafeLoader))
 
-    def _from_toml(self, config_file: Path) -> None:
+    def _from_toml(self, config_file: Path):
         try:
             import toml
         except ModuleNotFoundError:

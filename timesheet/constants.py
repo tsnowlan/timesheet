@@ -1,8 +1,8 @@
-import datetime
+import datetime as DT
 
 # dates
-ONE_DAY = datetime.timedelta(days=1)
-TODAY = datetime.date.today()
+ONE_DAY = DT.timedelta(days=1)
+TODAY = DT.date.today()
 TOMORROW = TODAY + ONE_DAY
 YESTERDAY = TODAY - ONE_DAY
 

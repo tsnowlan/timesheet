@@ -15,40 +15,43 @@
   },
 
   // Set *default* container specific settings.json values on container create.
-  "settings": {
-    "[python]": {
-      "editor.defaultFormatter": null
-    },
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "editor.formatOnSave": true,
-    "python.analysis.typeCheckingMode": "basic",
-    "python.defaultInterpreterPath": "/dist/gitlab-ops-qFDBBSoT/bin/python3",
-    "python.formatting.autopep8Path": "/usr/local/py-utils/bin/autopep8",
-    "python.formatting.blackPath": "/usr/local/py-utils/bin/black",
-    "python.formatting.provider": "black",
-    "python.formatting.yapfPath": "/usr/local/py-utils/bin/yapf",
-    "python.languageServer": "Pylance",
-    "python.linting.banditPath": "/usr/local/py-utils/bin/bandit",
-    "python.linting.enabled": true,
-    "python.linting.flake8Path": "/usr/local/py-utils/bin/flake8",
-    "python.linting.mypyPath": "/usr/local/py-utils/bin/mypy",
-    "python.linting.pycodestylePath": "/usr/local/py-utils/bin/pycodestyle",
-    "python.linting.pydocstylePath": "/usr/local/py-utils/bin/pydocstyle",
-    "python.linting.pylintEnabled": false,
-    "python.linting.pylintPath": "/usr/local/py-utils/bin/pylint"
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "[python]": { "editor.defaultFormatter": null },
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "python.analysis.typeCheckingMode": "basic",
+        "python.defaultInterpreterPath": "/dist/gitlab-ops-qFDBBSoT/bin/python3",
+        "python.formatting.autopep8Path": "/usr/local/py-utils/bin/autopep8",
+        "python.formatting.blackPath": "/usr/local/py-utils/bin/black",
+        "python.formatting.provider": "black",
+        "python.formatting.yapfPath": "/usr/local/py-utils/bin/yapf",
+        "python.languageServer": "Pylance",
+        "python.linting.banditPath": "/usr/local/py-utils/bin/bandit",
+        "python.linting.enabled": true,
+        "python.linting.flake8Path": "/usr/local/py-utils/bin/flake8",
+        "python.linting.mypyPath": "/usr/local/py-utils/bin/mypy",
+        "python.linting.pycodestylePath": "/usr/local/py-utils/bin/pycodestyle",
+        "python.linting.pydocstylePath": "/usr/local/py-utils/bin/pydocstyle",
+        "python.linting.pylintEnabled": false,
+        "python.linting.pylintPath": "/usr/local/py-utils/bin/pylint"
+      },
+      "extensions": [
+        "esbenp.prettier-vscode",
+        "foxundermoon.shell-format",
+        "ms-azuretools.vscode-docker",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "richie5um2.vscode-sort-json",
+        "timonwong.shellcheck",
+        "Tyriar.sort-lines"
+      ]
+    }
   },
 
   // Add the IDs of extensions you want installed when the container is created.
-  "extensions": [
-    "esbenp.prettier-vscode",
-    "foxundermoon.shell-format",
-    "ms-azuretools.vscode-docker",
-    "ms-python.python",
-    "ms-python.vscode-pylance",
-    "richie5um2.vscode-sort-json",
-    "timonwong.shellcheck",
-    "Tyriar.sort-lines"
-  ],
 
   "containerEnv": {
     "PIPENV_YES": "1",
@@ -63,7 +66,7 @@
   // Use 'postCreateCommand' to run commands after the container is created.
   "postCreateCommand": "VIRTUAL_ENV= pipenv install --dev",
 
-  "postAttachCommand": "pipenv shell",
+  // "postAttachCommand": "pipenv shell",
 
   // re-use extensions, installed modules on rebuild instead of re-install
   "mounts": [

@@ -27,6 +27,7 @@ class Timesheet(Base):
     date = Column(Date, primary_key=True, unique=True, index=True)
     clock_in = Column(Time, nullable=True)
     clock_out = Column(Time, nullable=True)
+    project = Column(String, nullable=True)
     is_flex = Column(Boolean, default=False)
     is_pto = Column(Boolean, default=False)
 

@@ -11,12 +11,11 @@ setup(
     setup_requires=["setuptools-git-versioning"],
     install_requires=[
         "click>=7.1",
-        "sqlalchemy>=1.3",
+        "sqlalchemy>=1.3,<2",
     ],
     extras_require={
         "dev": [
-            "black>=20.8b1",
-            "flake8>=s.8.4",
+            "black>=23.1.0",
             "ipython>=7.19.0",
             "pdbpp>=0.10.2",
             "pylint>=2.6.0",

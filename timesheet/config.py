@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from .constants import DEFAULT_PROJECT
 from .enums import ConfigFormat
 from .util import time_difference
 
@@ -12,6 +13,7 @@ DEF_DBFILE = Path().home() / "timesheet.db"
 class Config:
     standard_start = DT.time(9, 0)
     standard_quit = DT.time(16, 30)
+    default_project = DEFAULT_PROJECT
     _day_length: Optional[DT.timedelta] = None
     work_weekend = False
     round_interval = 15

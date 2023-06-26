@@ -5,14 +5,16 @@ name = "pypi"
 
 [packages]
 click = "*"
-pipenv-setup = "*"
+packaging = "==20.0"
+pipenv-setup = "==3.1.4"
 pyyaml = "*"
-sqlalchemy = "*"
+sqlalchemy = ">=1.3,<2"
 timesheet = {editable = true, path = "."}
 toml = "*"
+vistir = "<0.7"
 
 [dev-packages]
-black = "21.12b0"
+black = "*"
 flake8 = "*"
 ipython = "*"
 pdbpp = "*"

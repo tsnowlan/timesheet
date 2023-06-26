@@ -108,6 +108,7 @@ def add_log(
     log_day: DT.date,
     log_type: LogType,
     log_time: DT.time,
+    project: str = config.default_project,
     overwrite: bool = False,
 ) -> Log:
     log_data = {
@@ -115,6 +116,8 @@ def add_log(
         "clock_in": log_time if log_type == LogType.IN else None,
         "clock_out": log_time if log_type == LogType.OUT else None,
     }
+    if log_type is LogType.IN:
+        log_data["project"] = project
     if row_exists(log_day):
         new_row = update_row(**log_data, overwrite=overwrite)
     else:
@@ -276,7 +279,7 @@ def backfill_days(
             ):
                 new_days.append(new_row)
 
-    for (log_obj, updates) in audit_list:
+    for log_obj, updates in audit_list:
         new_obj = merge_times(log_obj, updates, validate, overwrite)
         if new_obj:
             new_days.append(new_obj)
@@ -662,10 +665,11 @@ def add_row(
     clock_out: Optional[DT.time] = None,
     is_flex: bool = False,
     is_pto: bool = False,
+    project: Optional[str] = None,
 ) -> Timesheet:
     if clock_in is None and clock_out is None:
         raise ValueError("You must specify at least one time to create a new timesheet entry")
-    new_row = Timesheet(date=day, clock_in=clock_in, clock_out=clock_out, is_flex=is_flex)
+    new_row = Timesheet(date=day, clock_in=clock_in, clock_out=clock_out, is_flex=is_flex, is_pto=is_pto, project=project)
     db.session.add(new_row)
     try:
         db.session.commit()

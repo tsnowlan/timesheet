@@ -19,7 +19,7 @@ from .app import (
     pto_range,
     set_flex_balance,
 )
-from .constants import DATE_FORMATS, DATETIME_FORMATS, ONE_DAY, ROW_HEADER, TODAY
+from .constants import DATE_FORMATS, DATETIME_FORMATS, ONE_DAY, ROW_HEADER, TODAY, DEFAULT_PROJECT
 from .enums import AllTargets, AllTargetsType, LogType, PrintFormat
 from .exceptions import ExistingData, NoData
 from .util import dt2date, init_logs, str2enum, target2dt, validate_datetime
@@ -88,6 +88,7 @@ def run_cli(
     type=click.DateTime(DATETIME_FORMATS),
     callback=validate_datetime,
 )
+@click.option("-p", "--project", default=DEFAULT_PROJECT, help="use a specific project")
 @click.option("-g", "--guess", is_flag=True, help="Guess login time from auth logs")
 @click.option("-f", "--overwrite", is_flag=True, help="overwrite any exisiting entry")
 @click.option(
@@ -99,6 +100,7 @@ def run_cli(
 def clock(
     log_type: LogType,
     log_time: DT.datetime,
+    project: Optional[str],
     guess: bool,
     overwrite: bool,
     config_file: Optional[Path],
@@ -111,7 +113,13 @@ def clock(
             guess_args = [log_type == lt for lt in LogType] + [overwrite]
             new_log = guess_day(log_time.date(), *guess_args).log(log_type)
         else:
-            new_log = add_log(log_time.date(), log_type, log_time.time(), overwrite)
+            new_log = add_log(
+                log_time.date(),
+                log_type,
+                log_time.time(),
+                project=project or app_config.default_project,
+                overwrite=overwrite,
+            )
     except (ExistingData, NoData) as e:
         logging.error(e)
         exit(1)

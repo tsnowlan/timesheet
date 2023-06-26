@@ -1,5 +1,7 @@
 import datetime as DT
 
+DEFAULT_PROJECT = "default"
+
 # dates
 ONE_DAY = DT.timedelta(days=1)
 TODAY = DT.date.today()

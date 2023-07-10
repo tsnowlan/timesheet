@@ -14,12 +14,13 @@ from .app import (
     flex_date,
     get_flex_balance,
     guess_day,
+    hourly_from_range,
     import_calendar,
     print_range,
     pto_range,
     set_flex_balance,
 )
-from .constants import DATE_FORMATS, DATETIME_FORMATS, ONE_DAY, ROW_HEADER, TODAY, DEFAULT_PROJECT
+from .constants import DATE_FORMATS, DATETIME_FORMATS, DEFAULT_PROJECT, ONE_DAY, ROW_HEADER, TODAY
 from .enums import AllTargets, AllTargetsType, LogType, PrintFormat
 from .exceptions import ExistingData, NoData
 from .util import dt2date, init_logs, str2enum, target2dt, validate_datetime
@@ -243,6 +244,17 @@ def print_logs(target: AllTargetsType, export: bool):
         exit(1)
 
 
+@click.command("export", short_help="export daily/hourly summaries")
+@click.argument("month", metavar="MONTH_NAME", callback=str2enum)
+def export_hourly(month: AllTargetsType):
+    min_date, max_date = target2dt(month)
+    try:
+        hourly_from_range(min_date, max_date)
+    except NoData as e:
+        logging.error(e)
+        exit(1)
+
+
 ###############################
 ## timesheet update-holidays ##
 ###############################
@@ -420,6 +432,7 @@ def init_app(
 
 run_cli.add_command(clock)
 run_cli.add_command(backfill)
+run_cli.add_command(export_hourly)
 run_cli.add_command(edit)
 run_cli.add_command(print_logs)
 run_cli.add_command(update_holidays)

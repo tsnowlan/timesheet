@@ -104,6 +104,69 @@ def print_range(
 
 
 @ensure_db(db)
+def hourly_from_range(from_day: Optional[DT.date], until_day: Optional[DT.date]):
+    range_logs = get_range(from_day, until_day)
+    if len(range_logs) == 0:
+        if from_day and until_day:
+            raise NoData(
+                db.db_file,
+                "timesheet.date",
+                f"No data found between {from_day} and {until_day}",
+            )
+        elif from_day:
+            raise NoData(
+                db.db_file, "timesheet.date", f"No data found between {from_day} and {TOMORROW}"
+            )
+        elif until_day:
+            raise NoData(db.db_file, "timesheet.date", f"No data found before {TOMORROW}")
+        else:
+            raise NoData(db.db_file, "timesheet.date", f"No log entries found, table is empty")
+
+    if from_day is None:
+        from_day = range_logs[0].date
+    if until_day is None or until_day > TOMORROW:
+        until_day = TOMORROW
+    logging.debug(f"printing data from {from_day} until {until_day}")
+
+    hours_by_day: dict[DT.date, float] = {}
+    for idx, row in enumerate(range_logs):
+        row_hours = (
+            time_difference(
+                row.clock_in or config.standard_start,
+                row.clock_out or config.standard_quit,
+                True,
+                config.round_threshold,
+            ).total_seconds()
+            / 3600
+        )
+        if row_hours < 0:
+            logging.warning(
+                f"Negative hours on {row.date}: {row.clock_in} - {row.clock_out} ({row_hours:.2f}h)"
+            )
+            row_hours = 0
+        elif row.is_pto:
+            row_hours = 0
+
+        if hours_by_day.get(row.date) is None:
+            hours_by_day[row.date] = 0
+
+        hours_by_day[row.date] += row_hours
+
+    total = 0
+    print("Date\tHours")
+    for curr_day in date_range(from_day, until_day):
+        if is_holiday(curr_day) and curr_day not in hours_by_day:
+            continue
+
+        day_hrs = hours_by_day.get(curr_day, config.day_length.total_seconds() / 3600)
+        total += day_hrs
+        if day_hrs == 0:
+            continue
+        print(f"{curr_day}\t{day_hrs:.02f}")
+    print(f"\t{total:.02f}")
+
+
+@ensure_db(db)
 def add_log(
     log_day: DT.date,
     log_type: LogType,
@@ -669,7 +732,14 @@ def add_row(
 ) -> Timesheet:
     if clock_in is None and clock_out is None:
         raise ValueError("You must specify at least one time to create a new timesheet entry")
-    new_row = Timesheet(date=day, clock_in=clock_in, clock_out=clock_out, is_flex=is_flex, is_pto=is_pto, project=project)
+    new_row = Timesheet(
+        date=day,
+        clock_in=clock_in,
+        clock_out=clock_out,
+        is_flex=is_flex,
+        is_pto=is_pto,
+        project=project,
+    )
     db.session.add(new_row)
     try:
         db.session.commit()
@@ -688,9 +758,11 @@ def update_row(
     clock_in: Optional[DT.time] = None,
     clock_out: Optional[DT.time] = None,
     overwrite: bool = False,
+    project: Optional[str] = config.default_project,
 ) -> Timesheet:
     row = db.session.query(Timesheet).filter(Timesheet.date == day).scalar()
 
+    # breakpoint()
     bail = list()
     if clock_in:
         if not row.clock_in or overwrite:
@@ -703,6 +775,9 @@ def update_row(
         else:
             bail.append("clock_out")
 
+    if not row.project or overwrite:
+        row.project = project
+
     if len(bail):
         info_str = ", ".join([f"{k.replace('_', ' ')} ({getattr(row, k)})" for k in bail])
         plural = "s" if len(bail) > 1 else ""
@@ -710,6 +785,11 @@ def update_row(
         exit(1)
 
     db.session.add(row)
-    db.try_commit(True)
+    try:
+        db.try_commit()
+    except Exception as e:
+        logging.error(f"Unable to update row: {e}")
+        breakpoint()
+        raise e
 
     return row

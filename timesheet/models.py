@@ -1,7 +1,7 @@
 import datetime
 from typing import TYPE_CHECKING, Literal, Union
 
-from sqlalchemy import Boolean, Column, Date, MetaData, String, Time
+from sqlalchemy import Boolean, Column, Date, MetaData, PrimaryKeyConstraint, String, Time
 
 if TYPE_CHECKING:
     # sqlalchemy-stubs doesn't support 1.4+, but sqlalchemy2-stubs is still missing a lot
@@ -23,16 +23,17 @@ Base.metadata = md
 
 class Timesheet(Base):
     __tablename__ = "timesheet"
+    __table_args__ = (PrimaryKeyConstraint("date", "clock_in", "project"),)
 
-    date = Column(Date, primary_key=True, unique=True, index=True)
+    date = Column(Date, nullable=False)
     clock_in = Column(Time, nullable=True)
     clock_out = Column(Time, nullable=True)
-    project = Column(String, nullable=True)
+    project = Column(String, default="default")
     is_flex = Column(Boolean, default=False)
     is_pto = Column(Boolean, default=False)
 
     def __repr__(self) -> str:
-        return f"<Timesheet date={self.date} clock_in={self.clock_in} clock_out={self.clock_out} flex={self.is_flex} pto={self.is_pto}>"
+        return f"<Timesheet date={self.date} clock_in={self.clock_in} clock_out={self.clock_out} project={self.project!r} flex={self.is_flex} pto={self.is_pto}>"
 
     def __str__(self) -> str:
         if self.is_flex:

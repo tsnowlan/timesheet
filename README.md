@@ -46,5 +46,6 @@ Two executables are created on installation:
 
 ## TODO:
 
+- update python/Pipfile
 - integrate with Toggl
 - auto holiday detection

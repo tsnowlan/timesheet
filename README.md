@@ -1,8 +1,6 @@
 # timesheet
 
-Records start / stop working times
-
-Python typing magic is used, specifically for `pyright`/`pylance` in [VS Code](https://github.com/VSCodium/vscodium). Not completely compatible with `mypy` because why would Microsoft do a silly thing like use an existing project that already has a high user base. Or let their Intellisense correctly use `mypy` options. That would just be silly.
+Records start / stop working times, with some auto detection based on log activity.
 
 ## Current features
 
@@ -17,7 +15,7 @@ Python typing magic is used, specifically for `pyright`/`pylance` in [VS Code](h
     - _e.g.,_ `timesheet balance set 2021-01-01 20`
     - balance is hours available at the beginning of the day
   - mark full days flexed
-    - flex current day: `timesheet flex` 
+    - flex current day: `timesheet flex`
     - unflex a day: `timesheet flex --unflex 2021-01-05`
   - flexed hours are extracted automatically from timesheet logs
   - warns if empty work days are found when calculating the balance
@@ -25,22 +23,18 @@ Python typing magic is used, specifically for `pyright`/`pylance` in [VS Code](h
 
 ## Installation
 
-Because of the fancy python typing used, a minimum python version of 3.9 is required. Using
-[pipx](https://pipxproject.github.io/pipx/) to install is recommended unless (or even if) you're
-using python3.9 as system python. Python3.9 can be installed via conda
-(`conda create -n py3.9 python==3.9`) or pyenv (`pyenv install 3.9`) or maybe even your package
-manager.
-
 ```bash
 # from the repo root
-PIPX_DEFAULT_PYTHON=/path/to/python3.9 pipx install .
+pipx install --python "$(which python3.9)" -e .[dev]
 ```
 
 ### Updating
 
+As with installing, but add `--force` to install update over previous version.
+
 ```bash
 # from the repo root
-git pull && PIPX_DEFAULT_PYTHON=/path/to/python3.9 pipx install . --force
+git pull && pipx install --python "$(which python3.9)" -e .[dev] --force
 ```
 
 ## Usage
@@ -52,12 +46,5 @@ Two executables are created on installation:
 
 ## TODO:
 
-- Mark days as PTO, sick
-- Flex improvements
-  - awareness of short days
-  - load holidays from non-`ics` sources
-- Tests
-- Access excel timesheet directly
-  - `--export` writes to file
-  - `update-holidays` reads values for full/partial holidays
-- actual nice documentation?
+- integrate with Toggl
+- auto holiday detection
